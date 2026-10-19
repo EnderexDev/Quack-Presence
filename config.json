@@ -1,0 +1,70 @@
+{
+  "clientId": "1561776681230934119",
+
+  "modoAtivo": "discreto",
+
+  "mostrar": {
+    "projeto": true,
+    "atividade": true,
+    "thread": false,
+    "modelo": false,
+    "agentes": false,
+    "timer": true
+  },
+
+  "modos": {
+    "discreto": {
+      "linha1": "Programando",
+      "linha2": "{projeto}"
+    },
+    "normal": {
+      "linha1": "Programando · {projeto}",
+      "linha2": "{atividade}"
+    },
+    "completo": {
+      "linha1": "{projeto} · {thread}",
+      "linha2": "{atividade} · {modelo} · {agentes}"
+    }
+  },
+
+  "tipo": "jogando",
+  "textoNaListaDeMembros": "linha1",
+
+  "imagem": {
+    "grande": "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4bb.png",
+    "textoGrande": "{projeto}",
+    "pequena": "",
+    "textoPequena": ""
+  },
+
+  "botoes": [],
+
+  "projetos": {
+    "No project": { "nome": "Projeto pessoal" }
+  },
+  "textoProjetoPrivado": "Projeto privado",
+
+  "atividades": {
+    "command_execution": "Rodando comandos",
+    "file_change": "Editando código",
+    "web_search": "Pesquisando",
+    "reasoning": "Pensando na solução",
+    "assistant_message": "Escrevendo",
+    "dynamic_tool": "Trabalhando",
+    "subagent": "Trabalhando em várias frentes",
+    "entreTarefas": "Revisando"
+  },
+
+  "nomesModelo": {
+    "claude-opus-5-5": "Opus 5.5",
+    "claude-sonnet-5-5": "Sonnet 5.5",
+    "claude-fable-5-1": "Fable 5.1",
+    "claude-haiku-5-5": "Haiku 5.5"
+  },
+
+  "ociosoMinutos": 15,
+  "quandoOcioso": "esconder",
+  "textoOcioso": "Pensando no próximo passo",
+
+  "intervaloSegundos": 5
+}
