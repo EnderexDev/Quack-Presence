@@ -1,4 +1,3 @@
 ' Inicia o T3 Presence sem janela. Copiado para a pasta Inicializar pelo install.
-Set fso = CreateObject("Scripting.FileSystemObject")
-dir = "C:\Users\Ender\t3-presence"
+dir = "C:\Users\Ender\Documents\Dev\T3 Presence"
 CreateObject("WScript.Shell").Run "node --no-warnings """ & dir & "\presence.mjs""", 0, False
