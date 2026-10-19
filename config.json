@@ -27,7 +27,10 @@
     }
   },
 
-  "tipo": "jogando",
+  "tipo": "auto",
+  "tipoComJogo": "assistindo",
+  "tipoSemJogo": "jogando",
+  "jogos": ["RobloxPlayerBeta.exe"],
   "textoNaListaDeMembros": "linha1",
 
   "imagem": {

@@ -5,6 +5,7 @@
 //      node presence.mjs --dry      (só imprime a atividade calculada, sem Discord)
 import { DatabaseSync } from "node:sqlite";
 import net from "node:net";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -57,6 +58,23 @@ function t3Running() {
   }
 }
 
+// Jogo aberto: o Discord mostra um "Jogando" por vez, e o do jogo esconde o nosso.
+// tasklist custa ~100 ms, então o resultado vale por 30 s.
+let gameCache = { at: 0, running: false };
+function gameRunning(cfg) {
+  const games = (cfg.jogos || []).map((g) => g.toLowerCase());
+  if (!games.length) return false;
+  if (Date.now() - gameCache.at < 30_000) return gameCache.running;
+  let running = false;
+  try {
+    const out = execFileSync("tasklist", ["/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
+    running = out.split("\n").some((l) => games.includes(l.split(",")[0]?.replace(/"/g, "").toLowerCase()));
+  } catch {}
+  gameCache = { at: Date.now(), running };
+  return running;
+}
+
+let stickyRunId = null;
 let db = null;
 function openDb() {
   if (!db) db = new DatabaseSync(DB_PATH, { readOnly: true });
@@ -80,20 +98,27 @@ function readState(cfg) {
   const activeRuns = running.filter((r) => !ignored(r));
   const recentRuns = recent.filter((r) => !ignored(r));
 
-  // Run em foco: entre as que rodam, a que mexeu por último.
+  // Run em foco: a mesma enquanto ela rodar (senão o card alterna entre threads paralelas);
+  // quando ela acaba, a que mexeu por último.
   const itemStmt = d.prepare(`SELECT type, status, updated_at FROM orchestration_v2_projection_turn_items
     WHERE thread_id = ? AND run_id = ? ORDER BY ordinal DESC LIMIT 8`);
-  let focus = null;
-  let focusItem = null;
-  for (const run of activeRuns) {
+  const latestItem = (run) => {
     const items = itemStmt.all(run.thread_id, run.run_id);
-    const item = items.find((i) => i.status === "running") || items[0] || null;
-    const touched = item?.updated_at || run.requested_at;
-    if (!focus || touched > (focusItem?.updated_at || focus.requested_at)) {
-      focus = run;
-      focusItem = item;
+    return items.find((i) => i.status === "running") || items[0] || null;
+  };
+  let focus = activeRuns.find((r) => r.run_id === stickyRunId) || null;
+  let focusItem = focus ? latestItem(focus) : null;
+  if (!focus) {
+    for (const run of activeRuns) {
+      const item = latestItem(run);
+      const touched = item?.updated_at || run.requested_at;
+      if (!focus || touched > (focusItem?.updated_at || focus.requested_at)) {
+        focus = run;
+        focusItem = item;
+      }
     }
   }
+  stickyRunId = focus?.run_id ?? null;
 
   // Bloco de trabalho: runs encadeadas sem pausa maior que ociosoMinutos.
   const gapMs = (cfg.ociosoMinutos ?? 15) * 60_000;
@@ -179,7 +204,10 @@ function buildActivity(cfg, state) {
 
   const mode = cfg.modos?.[cfg.modoAtivo] || cfg.modos?.discreto || { linha1: "Programando" };
   const activity = {
-    type: TYPES[cfg.tipo] ?? 0,
+    type:
+      cfg.tipo === "auto"
+        ? TYPES[gameRunning(cfg) ? cfg.tipoComJogo : cfg.tipoSemJogo] ?? 0
+        : TYPES[cfg.tipo] ?? 0,
     details: clamp(fill(mode.linha1, values)),
     state: clamp(fill(mode.linha2, values)),
     instance: false,
@@ -366,7 +394,7 @@ async function tick() {
     return;
   }
   lastSent = key;
-  log("atividade:", key);
+  log("atividade:", key, "| app:", res.data?.name);
   if (ARGS.has("--once")) console.log("resposta do Discord:", JSON.stringify(res.data));
 }
 
