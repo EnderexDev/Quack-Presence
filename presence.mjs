@@ -99,7 +99,10 @@ function readState(cfg) {
   const gapMs = (cfg.ociosoMinutos ?? 15) * 60_000;
   // Intervalos ordenados pelo fim: uma run antiga ainda rodando entra antes das que já acabaram.
   const now = Date.now();
-  const spans = recentRuns
+  // activeRuns entra junto: uma run rodando há mais de 24h fica fora de recentRuns.
+  const seen = new Set();
+  const spans = [...activeRuns, ...recentRuns]
+    .filter((r) => !seen.has(r.run_id) && seen.add(r.run_id))
     .map((r) => ({
       start: Date.parse(r.requested_at),
       end: r.status === "running" ? now : Date.parse(r.completed_at || r.requested_at),
@@ -272,8 +275,13 @@ class DiscordIpc {
       } catch {
         return this.dropPeer("JSON inválido");
       }
+      if (!body || typeof body !== "object") return this.dropPeer("frame não é objeto");
       this.buf = this.buf.subarray(8 + len);
-      if (op === 3) this.send(4, body);
+      if (op === 3) {
+        // Quem manda ping sem ler as respostas não enche a fila de saída.
+        if (this.sock.writableLength > MAX_FRAME) return this.dropPeer("fila de saída cheia");
+        this.send(4, body);
+      }
       else if (op === 2) log("Discord fechou a conexão:", JSON.stringify(body));
       else if (body.evt === "READY") this.readyResolve?.();
       else if (body.nonce && this.pending.has(body.nonce)) {
@@ -371,7 +379,7 @@ async function main() {
   }
   // Trava de instância única: o Windows solta o pipe quando o processo morre, sem arquivo velho.
   const locked = await new Promise((resolve) => {
-    const lock = net.createServer();
+    const lock = net.createServer((s) => s.destroy());
     lock.once("error", () => resolve(false));
     lock.listen("\\\\?\\pipe\\t3-presence-lock", () => resolve(true));
   });
