@@ -60,17 +60,18 @@ function t3Running() {
 
 // Jogo aberto: o Discord mostra um "Jogando" por vez, e o do jogo esconde o nosso.
 // tasklist custa ~100 ms, então o resultado vale por 30 s.
-let gameCache = { at: 0, running: false };
+let gameCache = { key: "", at: 0, running: false };
 function gameRunning(cfg) {
   const games = (cfg.jogos || []).map((g) => g.toLowerCase());
   if (!games.length) return false;
-  if (Date.now() - gameCache.at < 30_000) return gameCache.running;
+  const key = games.join("|");
+  if (gameCache.key === key && Date.now() - gameCache.at < 30_000) return gameCache.running;
   let running = false;
   try {
     const out = execFileSync("tasklist", ["/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
     running = out.split("\n").some((l) => games.includes(l.split(",")[0]?.replace(/"/g, "").toLowerCase()));
   } catch {}
-  gameCache = { at: Date.now(), running };
+  gameCache = { key, at: Date.now(), running };
   return running;
 }
 
@@ -91,7 +92,9 @@ function readState(cfg) {
   const d = openDb();
   const running = d.prepare(`SELECT ${RUN_COLS} ${RUN_JOIN} WHERE r.status = 'running'`).all();
   const recent = d
-    .prepare(`SELECT ${RUN_COLS} ${RUN_JOIN} WHERE r.requested_at >= ? ORDER BY r.requested_at DESC`)
+    .prepare(
+      `SELECT ${RUN_COLS} ${RUN_JOIN} WHERE r.requested_at >= ?1 OR r.completed_at >= ?1 ORDER BY r.requested_at DESC`,
+    )
     .all(new Date(Date.now() - 24 * 3600_000).toISOString());
 
   const ignored = (run) => cfg.projetos?.[run.project_title]?.ignorar === true;
@@ -422,7 +425,8 @@ async function main() {
     } catch (e) {
       log("erro:", e.stack || e.message);
     }
-    const secs = Math.max(3, Number(config?.intervaloSegundos) || 5);
+    // Teto de 1 h: acima do limite do setTimeout (~24,8 dias) o Node troca a espera por 1 ms.
+    const secs = Math.min(3600, Math.max(3, Number(config?.intervaloSegundos) || 5));
     await new Promise((r) => setTimeout(r, secs * 1000));
   }
 }
