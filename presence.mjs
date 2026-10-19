@@ -125,6 +125,27 @@ function readState(cfg) {
   }
   stickyRunId = focus?.run_id ?? null;
 
+  // Sessão aberta: o T3 não diz qual conversa está na tela, então vale a da última mensagem
+  // do usuário. Ela manda no projeto; a atividade vem dela se estiver rodando.
+  let openRun = null;
+  if (cfg.seguirUltimaMensagem !== false) {
+    const known = [...activeRuns, ...recentRuns];
+    const msgs = d
+      .prepare(`SELECT thread_id FROM orchestration_v2_projection_turn_items
+        WHERE type = 'user_message' ORDER BY updated_at DESC LIMIT 30`)
+      .all();
+    for (const { thread_id } of msgs) {
+      const runs = known.filter((r) => r.thread_id === thread_id);
+      if (!runs.length) continue;
+      openRun = runs.reduce((a, b) => (b.requested_at > a.requested_at ? b : a));
+      break;
+    }
+    if (openRun) {
+      focus = openRun.status === "running" ? openRun : null;
+      focusItem = focus ? latestItem(focus) : null;
+    }
+  }
+
   // Bloco de trabalho: runs encadeadas sem pausa maior que ociosoMinutos.
   const gapMs = (cfg.ociosoMinutos ?? 15) * 60_000;
   // Intervalos ordenados pelo fim: uma run antiga ainda rodando entra antes das que já acabaram.
@@ -154,7 +175,7 @@ function readState(cfg) {
   else if (blockStart !== null) stickyBlockStart = Math.min(stickyBlockStart ?? blockStart, blockStart);
   if (!idle && stickyBlockStart !== null) blockStart = stickyBlockStart;
   // Entre tarefas, o projeto é o da run que terminou por último, não o da última pedida.
-  const last = focus || spans[0]?.run || null;
+  const last = openRun || focus || spans[0]?.run || null;
   return { idle, focus, focusItem, last, agents: activeRuns.length, blockStart };
 }
 

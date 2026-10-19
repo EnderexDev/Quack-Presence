@@ -43,7 +43,7 @@
   "botoes": [],
 
   "projetos": {
-    "No project": { "nome": "Projeto pessoal" }
+    "No project": { "nome": "Explorando ideias" }
   },
   "textoProjetoPrivado": "Projeto privado",
 
@@ -68,6 +68,8 @@
   "ociosoMinutos": 15,
   "quandoOcioso": "esconder",
   "textoOcioso": "Pensando no próximo passo",
+
+  "seguirUltimaMensagem": true,
 
   "intervaloSegundos": 5
 }
