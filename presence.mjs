@@ -78,6 +78,7 @@ function gameRunning(cfg) {
 
 let stickyRunId = null;
 let stickyBlockStart = null;
+let stickyLastEnd = 0;
 let db = null;
 function openDb() {
   if (!db) db = new DatabaseSync(DB_PATH, { readOnly: true });
@@ -171,8 +172,12 @@ function readState(cfg) {
 
   const idle = activeRuns.length === 0 && Date.now() - lastEnd > gapMs;
   // A consulta só vê 24h: um bloco mais longo que isso guarda o início já visto até ficar ocioso.
+  // Um bloco novo que começa mais de gapMs depois do último fim visto é outro bloco, mesmo que
+  // nenhum ciclo tenha visto o ocioso no meio (PC dormindo, programa pausado).
+  if (stickyBlockStart !== null && blockStart !== null && blockStart - stickyLastEnd > gapMs) stickyBlockStart = null;
   if (idle) stickyBlockStart = null;
   else if (blockStart !== null) stickyBlockStart = Math.min(stickyBlockStart ?? blockStart, blockStart);
+  stickyLastEnd = lastEnd;
   if (!idle && stickyBlockStart !== null) blockStart = stickyBlockStart;
   // Entre tarefas, o projeto é o da run que terminou por último, não o da última pedida.
   const last = openRun || focus || spans[0]?.run || null;
