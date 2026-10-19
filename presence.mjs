@@ -32,9 +32,9 @@ function log(...parts) {
 let config = null;
 let configMtime = 0;
 function loadConfig() {
-  const mtime = fs.statSync(CONFIG_PATH).mtimeMs;
-  if (config && mtime === configMtime) return config;
   try {
+    const mtime = fs.statSync(CONFIG_PATH).mtimeMs;
+    if (config && mtime === configMtime) return config;
     config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
     configMtime = mtime;
     log("config carregado, modo:", config.modoAtivo);
@@ -97,18 +97,21 @@ function readState(cfg) {
 
   // Bloco de trabalho: runs encadeadas sem pausa maior que ociosoMinutos.
   const gapMs = (cfg.ociosoMinutos ?? 15) * 60_000;
-  let lastEnd = 0;
-  for (const r of recentRuns) {
-    const end = r.status === "running" ? Date.now() : Date.parse(r.completed_at || r.requested_at);
-    lastEnd = Math.max(lastEnd, end);
-  }
+  // Intervalos ordenados pelo fim: uma run antiga ainda rodando entra antes das que já acabaram.
+  const now = Date.now();
+  const spans = recentRuns
+    .map((r) => ({
+      start: Date.parse(r.requested_at),
+      end: r.status === "running" ? now : Date.parse(r.completed_at || r.requested_at),
+    }))
+    .sort((a, b) => b.end - a.end);
+  const lastEnd = spans[0]?.end ?? 0;
   let blockStart = null;
-  let edge = Date.now();
-  for (const r of recentRuns) {
-    const end = r.status === "running" ? Date.now() : Date.parse(r.completed_at || r.requested_at);
-    if (edge - end > gapMs) break;
-    blockStart = Date.parse(r.requested_at);
-    edge = Math.min(edge, blockStart);
+  let edge = now;
+  for (const s of spans) {
+    if (edge - s.end > gapMs) break;
+    blockStart = Math.min(blockStart ?? s.start, s.start);
+    edge = Math.min(edge, s.start);
   }
 
   const idle = activeRuns.length === 0 && Date.now() - lastEnd > gapMs;
@@ -120,6 +123,7 @@ function readState(cfg) {
 
 const TYPES = { jogando: 0, ouvindo: 2, assistindo: 3, competindo: 5 };
 const DISPLAY = { nome: 0, linha2: 1, linha1: 2 };
+const MAX_FRAME = 1_000_000;
 
 function prettyModel(cfg, model) {
   if (!model) return "";
@@ -209,9 +213,13 @@ class DiscordIpc {
   }
 
   async connect() {
-    for (let i = 0; i < 10; i++) {
+    // T3P_IPC_PIPE aponta para um pipe de teste no lugar do Discord.
+    const pipes = process.env.T3P_IPC_PIPE
+      ? [process.env.T3P_IPC_PIPE]
+      : Array.from({ length: 10 }, (_, i) => `\\\\?\\pipe\\discord-ipc-${i}`);
+    for (const pipe of pipes) {
       try {
-        await this.tryPipe(`\\\\?\\pipe\\discord-ipc-${i}`);
+        await this.tryPipe(pipe);
         return true;
       } catch {}
     }
@@ -220,6 +228,7 @@ class DiscordIpc {
 
   tryPipe(pipePath) {
     return new Promise((resolve, reject) => {
+      this.buf = Buffer.alloc(0);
       const sock = net.createConnection(pipePath);
       const fail = (e) => {
         sock.destroy();
@@ -255,8 +264,14 @@ class DiscordIpc {
     while (this.buf.length >= 8) {
       const op = this.buf.readInt32LE(0);
       const len = this.buf.readInt32LE(4);
+      if (len < 0 || len > MAX_FRAME) return this.dropPeer(`frame de ${len} bytes`);
       if (this.buf.length < 8 + len) break;
-      const body = JSON.parse(this.buf.subarray(8, 8 + len).toString("utf8"));
+      let body;
+      try {
+        body = JSON.parse(this.buf.subarray(8, 8 + len).toString("utf8"));
+      } catch {
+        return this.dropPeer("JSON inválido");
+      }
       this.buf = this.buf.subarray(8 + len);
       if (op === 3) this.send(4, body);
       else if (op === 2) log("Discord fechou a conexão:", JSON.stringify(body));
@@ -268,9 +283,16 @@ class DiscordIpc {
     }
   }
 
+  dropPeer(reason) {
+    log("resposta malformada do pipe, desconectando:", reason);
+    this.buf = Buffer.alloc(0);
+    this.sock?.destroy();
+  }
+
   onClose() {
     this.ready = false;
     this.sock = null;
+    this.buf = Buffer.alloc(0);
     for (const done of this.pending.values()) done({ evt: "ERROR", data: { message: "conexão fechada" } });
     this.pending.clear();
   }
@@ -304,6 +326,9 @@ async function tick() {
       activity = buildActivity(cfg, readState(cfg));
     } catch (e) {
       log("falha lendo o estado do T3 (o formato do banco mudou?):", e.message);
+      try {
+        db?.close();
+      } catch {}
       db = null;
       activity = null;
     }
@@ -344,14 +369,16 @@ async function main() {
     ipc?.close();
     return;
   }
-  const pidFile = path.join(DIR, "presence.pid");
-  try {
-    const old = Number(fs.readFileSync(pidFile, "utf8"));
-    process.kill(old, 0);
-    console.log(`já está rodando (pid ${old})`);
+  // Trava de instância única: o Windows solta o pipe quando o processo morre, sem arquivo velho.
+  const locked = await new Promise((resolve) => {
+    const lock = net.createServer();
+    lock.once("error", () => resolve(false));
+    lock.listen("\\\\?\\pipe\\t3-presence-lock", () => resolve(true));
+  });
+  if (!locked) {
+    console.log("já está rodando");
     return;
-  } catch {}
-  fs.writeFileSync(pidFile, String(process.pid));
+  }
   log("iniciado, pid", process.pid);
   for (;;) {
     try {
