@@ -69,13 +69,15 @@ function gameRunning(cfg) {
   let running = false;
   try {
     const out = execFileSync("tasklist", ["/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
-    running = out.split("\n").some((l) => games.includes(l.split(",")[0]?.replace(/"/g, "").toLowerCase()));
+    // Primeiro campo entre aspas inteiro: um nome de .exe pode ter vírgula.
+    running = out.split("\n").some((l) => games.includes(l.match(/^"([^"]*)"/)?.[1].toLowerCase()));
   } catch {}
   gameCache = { key, at: Date.now(), running };
   return running;
 }
 
 let stickyRunId = null;
+let stickyBlockStart = null;
 let db = null;
 function openDb() {
   if (!db) db = new DatabaseSync(DB_PATH, { readOnly: true });
@@ -132,6 +134,7 @@ function readState(cfg) {
   const spans = [...activeRuns, ...recentRuns]
     .filter((r) => !seen.has(r.run_id) && seen.add(r.run_id))
     .map((r) => ({
+      run: r,
       start: Date.parse(r.requested_at),
       end: r.status === "running" ? now : Date.parse(r.completed_at || r.requested_at),
     }))
@@ -146,7 +149,12 @@ function readState(cfg) {
   }
 
   const idle = activeRuns.length === 0 && Date.now() - lastEnd > gapMs;
-  const last = focus || recentRuns[0] || null;
+  // A consulta só vê 24h: um bloco mais longo que isso guarda o início já visto até ficar ocioso.
+  if (idle) stickyBlockStart = null;
+  else if (blockStart !== null) stickyBlockStart = Math.min(stickyBlockStart ?? blockStart, blockStart);
+  if (!idle && stickyBlockStart !== null) blockStart = stickyBlockStart;
+  // Entre tarefas, o projeto é o da run que terminou por último, não o da última pedida.
+  const last = focus || spans[0]?.run || null;
   return { idle, focus, focusItem, last, agents: activeRuns.length, blockStart };
 }
 
