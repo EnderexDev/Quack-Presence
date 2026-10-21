@@ -55,7 +55,7 @@ function template(text) {
 
 function preview() {
   const modo = view.config?.modos?.[draft.modoAtivo] ?? {};
-  return h("div", { class: "presence chunk" },
+  return h("div", { class: "presence chunk", id: "preview" },
     h("img", { src: "capivara.png", alt: "" }),
     h("div", { class: "lines" },
       // Em auto, o tipo que o card tem agora (Assistindo com um jogo aberto); sem card, Jogando
@@ -159,7 +159,8 @@ async function save() {
   const { iniciar, ...patch } = draft;
   try {
     await call("send_config", { patch });
-    if (iniciar !== Boolean(view.iniciarComWindows)) await call("set_startup", { enabled: iniciar });
+    // Sempre: o estado em view pode estar um ciclo atrás de um salvar anterior; repetir não muda nada
+    await call("set_startup", { enabled: iniciar });
     toast("Salvo");
   } catch {
     // o toast de erro já saiu
@@ -179,10 +180,13 @@ document.addEventListener("keydown", (event) => {
 await start((next) => {
   const wasOk = view.configOk;
   view = next;
-  // Com o formulário aberto, um estado novo só troca o selo: redesenhar apagaria o que está sendo digitado
+  // Com o formulário aberto, um estado novo só troca o selo e a prévia (o tipo do auto, o nome do
+  // app): redesenhar tudo apagaria o que está sendo digitado
   const old = document.getElementById("pill");
-  if (draft && wasOk && view.configOk && old) old.replaceWith(pill());
-  else render();
+  if (draft && wasOk && view.configOk && old) {
+    old.replaceWith(pill());
+    document.getElementById("preview")?.replaceWith(preview());
+  } else render();
 });
 await listen("settings-shown", () => {
   draft = null;

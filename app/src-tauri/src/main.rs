@@ -139,7 +139,12 @@ fn build_view(dir: &Path) -> Value {
     let status = read_json(&dir.join("presence.status.json"));
     let mut view = status_view(status.as_ref(), now_ms());
     let config_text = fs::read_to_string(dir.join("config.json"));
-    let config = config_text.as_ref().ok().and_then(|t| serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')).ok());
+    let config = config_text
+        .as_ref()
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')).ok())
+        // Um JSON válido que não é objeto (null, uma lista) também não serve de config
+        .filter(Value::is_object);
     view["configOk"] = json!(config.is_some());
     view["config"] = config.unwrap_or(Value::Null);
     view["iniciarComWindows"] = json!(startup_link().is_some_and(|p| p.exists()));
@@ -468,6 +473,17 @@ mod tests {
     fn the_folder_comes_from_dir() {
         let args: Vec<String> = ["exe", "--dir", r"E:\Documents\Dev\T3 Presence"].iter().map(|s| s.to_string()).collect();
         assert_eq!(dir_from_args(&args), PathBuf::from(r"E:\Documents\Dev\T3 Presence"));
+    }
+
+    #[test]
+    fn a_config_that_is_not_an_object_counts_as_broken() {
+        let dir = std::env::temp_dir().join(format!("t3p-view-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        for (text, ok) in [("null", false), ("[1]", false), ("{nope", false), (r#"{"modoAtivo":"normal"}"#, true)] {
+            fs::write(dir.join("config.json"), text).unwrap();
+            assert_eq!(build_view(&dir)["configOk"], ok, "{text}");
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
