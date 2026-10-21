@@ -465,14 +465,18 @@ let ipc = null;
 let lastSent = undefined;
 let reconnectWanted = false;
 // O que a bandeja mostra: lido de presence.status.json a cada poucos segundos.
-const status = { t3: false, discord: false, app: "", card: null, erro: "" };
+const status = { t3: false, discord: false, app: "", card: null, erro: "", pausado: false };
 
 async function tick() {
   const cfg = loadConfig();
   let activity = null;
   status.t3 = t3Running();
   status.erro = "";
-  if (status.t3) {
+  // Desligado pela bandeja: o card sai do Discord e o programa segue aberto, até ligar de novo
+  const pausado = cfg.ativo === false;
+  if (pausado !== status.pausado) log(pausado ? "desligado pela bandeja" : "ligado pela bandeja");
+  status.pausado = pausado;
+  if (status.t3 && !pausado) {
     try {
       activity = buildActivity(cfg, { ...readState(cfg), awayMs: awayMs(cfg) });
     } catch (e) {

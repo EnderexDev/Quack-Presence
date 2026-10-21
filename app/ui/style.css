@@ -139,7 +139,7 @@ body.traybody { background: transparent; overflow: hidden; }
 .trayhead .who .display { font-size: 20px; color: var(--line); text-transform: uppercase; }
 .trayhead .who span:last-child { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: #0a3a66; text-transform: uppercase; }
 .state { display: flex; align-items: center; gap: 10px; border-radius: 12px; background: var(--ink-900); padding: 9px 12px; color: var(--ink-200); font-weight: 600; font-size: 12.5px; }
-.state span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.state #estado { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trayfoot { display: flex; flex-direction: column; gap: 8px; }
 .trayfoot .row { gap: 8px; }
 .trayfoot .row .btn { flex: 1 1 auto; min-width: 0; }

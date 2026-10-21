@@ -86,6 +86,9 @@ fn status_view(status: Option<&Value>, now: f64) -> Value {
             let at = s["at"].as_f64().unwrap_or(0.0);
             if now - at > limite {
                 ("erro", "O programa não está respondendo".to_string(), String::new(), String::new(), "")
+            } else if s["pausado"].as_bool() == Some(true) {
+                // Antes do Discord: desligado, o Discord fora não é um problema a mostrar
+                ("parado", "Desligado, sem card no Discord".to_string(), String::new(), String::new(), "")
             } else if s["discord"].as_bool() != Some(true) {
                 ("erro", "Discord não conectado".to_string(), String::new(), String::new(), "")
             } else if s["t3"].as_bool() != Some(true) {
@@ -104,7 +107,8 @@ fn status_view(status: Option<&Value>, now: f64) -> Value {
         }
     };
     let erro = status.and_then(|s| s["erro"].as_str()).unwrap_or("");
-    if !erro.is_empty() && nivel != "ok" {
+    let pausado = nivel == "parado" && status.is_some_and(|s| s["pausado"].as_bool() == Some(true));
+    if !erro.is_empty() && nivel != "ok" && !pausado {
         linha1 = erro.to_string();
         linha2 = String::new();
     }
@@ -451,6 +455,14 @@ mod tests {
         let mut closed = base.clone();
         closed["t3"] = json!(false);
         assert_eq!(status_view(Some(&closed), now)["nivel"], "parado");
+
+        let mut paused = base.clone();
+        paused["pausado"] = json!(true);
+        paused["discord"] = json!(false);
+        paused["erro"] = json!("Discord fechado ou sem resposta");
+        let v = status_view(Some(&paused), now);
+        assert_eq!((v["nivel"].as_str(), v["estado"].as_str()), (Some("parado"), Some("Desligado, sem card no Discord")));
+        assert_eq!(v["linha1"], "", "desligado não mostra card");
 
         let mut off = base.clone();
         off["discord"] = json!(false);

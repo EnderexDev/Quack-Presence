@@ -8,6 +8,11 @@ function render() {
   document.getElementById("app").textContent = view.app || "StarX Studio";
   document.getElementById("dot").className = `dot ${dotFor(view.nivel)}`;
   document.getElementById("estado").textContent = view.estado || "Carregando...";
+  const ativo = document.getElementById("ativo");
+  const ligado = view.config?.ativo !== false;
+  ativo.className = ligado ? "tog" : "tog off";
+  ativo.setAttribute("aria-checked", String(ligado));
+  ativo.classList.toggle("hidden", !view.configOk);
 
   const card = document.getElementById("card");
   card.replaceChildren();
@@ -36,6 +41,13 @@ function render() {
   modes.classList.toggle("hidden", !names.length);
 }
 
+/** Liga ou desliga o card sem fechar o programa; vale até ligar de novo, mesmo depois de reiniciar */
+async function setActive(on) {
+  view = { ...view, config: { ...view.config, ativo: on } };
+  render();
+  await call("send_config", { patch: { ativo: on } });
+}
+
 async function setMode(name) {
   // Marca na hora; o presence.mjs grava o config.json e o próximo estado confirma.
   view = { ...view, config: { ...view.config, modoAtivo: name } };
@@ -53,6 +65,7 @@ function fit() {
 }
 new ResizeObserver(fit).observe(panel);
 
+document.getElementById("ativo").addEventListener("click", () => setActive(view.config?.ativo === false));
 document.getElementById("settings").addEventListener("click", () => call("show_settings"));
 document.getElementById("quit").addEventListener("click", () => call("quit"));
 document.getElementById("reconnect").addEventListener("click", () => call("reconnect"));
