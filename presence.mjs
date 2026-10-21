@@ -5,7 +5,9 @@
 //      node presence.mjs --dry      (só imprime a atividade calculada, sem Discord)
 import { DatabaseSync } from "node:sqlite";
 import net from "node:net";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import readline from "node:readline";
+import { isDeepStrictEqual } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +16,7 @@ import { fileURLToPath } from "node:url";
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(DIR, "config.json");
 const LOG_PATH = path.join(DIR, "presence.log");
+const STATUS_PATH = path.join(DIR, "presence.status.json");
 const T3_HOME = process.env.T3CODE_HOME || path.join(os.homedir(), ".t3");
 const DB_PATH = path.join(T3_HOME, "userdata", "statev2.sqlite");
 const RUNTIME_PATH = path.join(T3_HOME, "userdata", "server-runtime.json");
@@ -46,6 +49,48 @@ function loadConfig() {
   return config;
 }
 
+// Muda campos do config pela janela da bandeja. Troca só o valor no texto para manter o arquivo
+// como foi escrito à mão; se o resultado não bater com o esperado, regrava o JSON inteiro.
+function patchConfig(patch) {
+  const text = fs.readFileSync(CONFIG_PATH, "utf8");
+  const want = JSON.parse(text);
+  const leaves = [];
+  const walk = (obj, into, keys) => {
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        if (!into[k] || typeof into[k] !== "object") into[k] = {};
+        walk(v, into[k], [...keys, k]);
+      } else {
+        into[k] = v;
+        leaves.push([[...keys, k], v]);
+      }
+    }
+  };
+  walk(patch, want, []);
+
+  let out = text;
+  for (const [keys, value] of leaves) {
+    let from = 0;
+    for (const k of keys.slice(0, -1)) from = out.indexOf(JSON.stringify(k), from);
+    if (from < 0) break;
+    const key = JSON.stringify(keys.at(-1)).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(${key}\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*"|-?[\\d.eE+-]+|true|false|null)`, "g");
+    re.lastIndex = from;
+    const m = re.exec(out);
+    if (!m) break;
+    out = out.slice(0, m.index) + m[1] + JSON.stringify(value) + out.slice(m.index + m[0].length);
+  }
+  let same = false;
+  try {
+    same = isDeepStrictEqual(JSON.parse(out), want);
+  } catch {}
+  if (!same) out = JSON.stringify(want, null, 2) + "\n";
+  if (out === text) return;
+  fs.writeFileSync(CONFIG_PATH + ".tmp", out);
+  fs.renameSync(CONFIG_PATH + ".tmp", CONFIG_PATH);
+  log("config salvo pela bandeja:", JSON.stringify(patch));
+}
+
 // ---------- estado do T3 ----------
 
 function t3Running() {
@@ -68,7 +113,11 @@ function gameRunning(cfg) {
   if (gameCache.key === key && Date.now() - gameCache.at < 30_000) return gameCache.running;
   let running = false;
   try {
-    const out = execFileSync("tasklist", ["/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
+    // chcp 65001: sem ele o tasklist sai na página OEM (850) e um .exe com acento não bate.
+    const out = execFileSync("cmd", ["/d", "/c", "chcp 65001 >nul & tasklist /fo csv /nh"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
     // Primeiro campo entre aspas inteiro: um nome de .exe pode ter vírgula.
     running = out.split("\n").some((l) => games.includes(l.match(/^"([^"]*)"/)?.[1].toLowerCase()));
   } catch {}
@@ -314,7 +363,7 @@ class DiscordIpc {
           resolve();
         };
         this.send(0, { v: 1, client_id: this.clientId });
-        setTimeout(() => !this.ready && fail(new Error("sem READY")), 5000);
+        setTimeout(() => !this.ready && fail(new Error("sem READY")), 5000).unref();
       });
     });
   }
@@ -375,9 +424,10 @@ class DiscordIpc {
       const nonce = String(++this.nonce);
       this.pending.set(nonce, resolve);
       this.send(1, { cmd: "SET_ACTIVITY", args: { pid: process.pid, activity }, nonce });
+      // unref: no --once, a espera não segura o processo depois da resposta.
       setTimeout(() => {
         if (this.pending.delete(nonce)) resolve({ evt: "ERROR", data: { message: "sem resposta" } });
-      }, 5000);
+      }, 5000).unref();
     });
   }
 
@@ -390,15 +440,21 @@ class DiscordIpc {
 
 let ipc = null;
 let lastSent = undefined;
+let reconnectWanted = false;
+// O que a bandeja mostra: lido de presence.status.json a cada poucos segundos.
+const status = { t3: false, discord: false, app: "", card: null, erro: "" };
 
 async function tick() {
   const cfg = loadConfig();
   let activity = null;
-  if (t3Running()) {
+  status.t3 = t3Running();
+  status.erro = "";
+  if (status.t3) {
     try {
       activity = buildActivity(cfg, readState(cfg));
     } catch (e) {
       log("falha lendo o estado do T3 (o formato do banco mudou?):", e.message);
+      status.erro = "falha lendo o estado do T3";
       try {
         db?.close();
       } catch {}
@@ -412,27 +468,94 @@ async function tick() {
     return;
   }
 
+  if (reconnectWanted) {
+    reconnectWanted = false;
+    ipc?.close();
+    ipc = null;
+    log("reconectando a pedido da bandeja");
+  }
   if (!ipc || ipc.clientId !== cfg.clientId || !ipc.ready) {
     ipc?.close();
     ipc = new DiscordIpc(cfg.clientId);
     if (!(await ipc.connect())) {
       ipc = null;
+      status.discord = false;
+      status.erro ||= "Discord fechado ou sem resposta";
       return;
     }
     log("conectado ao Discord");
     lastSent = undefined;
   }
+  status.discord = true;
 
   const key = JSON.stringify(activity);
   if (key === lastSent) return;
   const res = await ipc.setActivity(activity);
   if (res.evt === "ERROR") {
     log("Discord recusou a atividade:", JSON.stringify(res.data), "enviado:", key);
+    status.erro = `Discord recusou: ${res.data?.message || "?"}`;
     return;
   }
   lastSent = key;
+  status.app = res.data?.name || status.app;
+  status.card = activity && { tipo: activity.type, linha1: activity.details || "", linha2: activity.state || "" };
   log("atividade:", key, "| app:", res.data?.name);
   if (ARGS.has("--once")) console.log("resposta do Discord:", JSON.stringify(res.data));
+}
+
+function writeStatus() {
+  const out = { ...status, modo: config?.modoAtivo, intervalo: config?.intervaloSegundos, pid: process.pid, at: Date.now() };
+  try {
+    fs.writeFileSync(STATUS_PATH + ".tmp", JSON.stringify(out));
+    fs.renameSync(STATUS_PATH + ".tmp", STATUS_PATH);
+  } catch {}
+}
+
+// ---------- ícone na bandeja ----------
+
+let wake = null;
+// Comando que chega durante o tick() não acha o wake: fica marcado e o ciclo seguinte não espera.
+let wakePending = false;
+
+// tray.ps1 desenha o ícone e o menu; fala com este processo por linhas no stdout dele.
+// Nos testes (pipe falso) ou com T3P_NO_TRAY, não abre.
+function startTray() {
+  if (process.env.T3P_IPC_PIPE || process.env.T3P_NO_TRAY) return;
+  const script = path.join(DIR, "tray.ps1");
+  const args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-WindowStyle", "Hidden"];
+  const child = spawn("powershell.exe", [...args, "-File", script, String(process.pid)], {
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.on("error", (e) => log("bandeja não abriu:", e.message));
+  child.on("exit", (code) => log("bandeja fechou, código", code));
+  child.stderr.on("data", (d) => log("bandeja:", d.toString().trim()));
+  readline.createInterface({ input: child.stdout }).on("line", (line) => onTrayCommand(line.trim()));
+}
+
+async function onTrayCommand(line) {
+  const [cmd] = line.split(" ", 1);
+  const rest = line.slice(cmd.length).trim();
+  try {
+    if (cmd === "quit") {
+      log("saindo pela bandeja");
+      // O Discord limpa o card quando a conexão cai; mandar null antes só deixa mais rápido.
+      if (ipc?.ready) await ipc.setActivity(null);
+      ipc?.close();
+      try {
+        fs.unlinkSync(STATUS_PATH);
+      } catch {}
+      process.exit(0);
+    } else if (cmd === "reconnect") {
+      reconnectWanted = true;
+    } else if (cmd === "config") {
+      patchConfig(JSON.parse(rest));
+    } else return;
+    wakePending = true;
+    wake?.();
+  } catch (e) {
+    log("comando da bandeja falhou:", line, e.message);
+  }
 }
 
 async function main() {
@@ -453,15 +576,28 @@ async function main() {
     return;
   }
   log("iniciado, pid", process.pid);
+  startTray();
   for (;;) {
+    wakePending = false;
     try {
       await tick();
     } catch (e) {
       log("erro:", e.stack || e.message);
+      status.erro = e.message;
     }
+    writeStatus();
+    if (wakePending) continue;
     // Teto de 1 h: acima do limite do setTimeout (~24,8 dias) o Node troca a espera por 1 ms.
+    // Um comando da bandeja (config salvo, reconectar) acorda antes.
     const secs = Math.min(3600, Math.max(3, Number(config?.intervaloSegundos) || 5));
-    await new Promise((r) => setTimeout(r, secs * 1000));
+    await new Promise((r) => {
+      const t = setTimeout(r, secs * 1000);
+      wake = () => {
+        clearTimeout(t);
+        r();
+      };
+    });
+    wake = null;
   }
 }
 

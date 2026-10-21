@@ -1,2 +1,4 @@
 presence.log
 presence.pid
+presence.status.json
+*.tmp
