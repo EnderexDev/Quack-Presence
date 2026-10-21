@@ -127,15 +127,33 @@ fn status_view(status: Option<&Value>, now: f64) -> Value {
 fn tooltip_for(view: &Value) -> String {
     let l1 = view["linha1"].as_str().unwrap_or("");
     let l2 = view["linha2"].as_str().unwrap_or("");
-    let body = if l1.is_empty() {
-        view["estado"].as_str().unwrap_or("").to_string()
-    } else if l2.is_empty() {
-        l1.to_string()
-    } else {
-        format!("{l1} · {l2}")
+    let body = match (l1.is_empty(), l2.is_empty()) {
+        (true, true) => view["estado"].as_str().unwrap_or("").to_string(),
+        (false, true) => l1.to_string(),
+        (true, false) => l2.to_string(),
+        (false, false) => format!("{l1} · {l2}"),
     };
-    let text = format!("T3 Presence: {body}");
-    if text.chars().count() > 120 { text.chars().take(119).collect::<String>() + "…" } else { text }
+    clip_utf16(&format!("T3 Presence: {body}"), TOOLTIP_UTF16)
+}
+
+/** O szTip do Windows tem 128 unidades UTF-16 com o terminador; um emoji conta duas */
+const TOOLTIP_UTF16: usize = 120;
+
+/** Corta em `max` unidades UTF-16 (o "…" incluso) sem partir um caractere ao meio */
+fn clip_utf16(text: &str, max: usize) -> String {
+    if text.encode_utf16().count() <= max {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        if used + c.len_utf16() > max - 1 {
+            break;
+        }
+        used += c.len_utf16();
+        out.push(c);
+    }
+    out + "…"
 }
 
 /** Tudo que as janelas precisam: o estado, o config.json (ou o erro dele) e o início com o Windows */
@@ -477,7 +495,12 @@ mod tests {
     fn the_tooltip_fits_what_windows_shows() {
         let long = "x".repeat(300);
         let tip = tooltip_for(&json!({ "estado": "", "linha1": long, "linha2": "y" }));
-        assert!(tip.chars().count() <= 120);
+        assert!(tip.encode_utf16().count() <= TOOLTIP_UTF16);
+        // Emoji contam duas unidades: o corte segue o limite do Windows e não parte nenhum ao meio
+        let tip = tooltip_for(&json!({ "estado": "", "linha1": "🦫".repeat(100), "linha2": "" }));
+        assert!(tip.encode_utf16().count() <= TOOLTIP_UTF16, "{}", tip.encode_utf16().count());
+        assert!(tip.ends_with('…') && tip.trim_end_matches('…').ends_with('🦫'));
+        assert_eq!(tooltip_for(&json!({ "estado": "x", "linha1": "", "linha2": "Revisando" })), "T3 Presence: Revisando", "só a linha 2");
         assert_eq!(tooltip_for(&json!({ "estado": "Ocioso, card escondido", "linha1": "", "linha2": "" })), "T3 Presence: Ocioso, card escondido");
     }
 
