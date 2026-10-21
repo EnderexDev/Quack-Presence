@@ -233,6 +233,21 @@ function readState(cfg) {
   return { idle, focus, focusItem, last, agents: activeRuns.length, blockStart };
 }
 
+// Longe do PC: a bandeja manda "input <ms>" (tempo desde o último teclado ou mouse) a cada 2 s.
+// Sem notícia dela há 30 s (bandeja fechou, --dry), não dá para saber: conta como presente.
+// T3P_IDLE_MS fixa o valor nos testes, que rodam sem bandeja.
+let inputIdleMs = null;
+let inputSeenAt = 0;
+let wasAway = false;
+function awayMs(cfg) {
+  const env = process.env.T3P_IDLE_MS;
+  let ms = null;
+  if (env !== undefined) ms = Number(env);
+  else if (Date.now() - inputSeenAt < 30_000) ms = inputIdleMs + (Date.now() - inputSeenAt);
+  const limit = (cfg.ausenteMinutos ?? 5) * 60_000;
+  return ms !== null && Number.isFinite(ms) && limit > 0 && ms >= limit ? ms : null;
+}
+
 // ---------- montagem da atividade ----------
 
 const TYPES = { jogando: 0, ouvindo: 2, assistindo: 3, competindo: 5 };
@@ -263,6 +278,13 @@ function clamp(s, max = 128) {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
+// Em minutos, nunca segundos: cada texto novo é um SET_ACTIVITY.
+function formatAway(ms) {
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} h` + (min % 60 ? ` ${min % 60} min` : "");
+}
+
 function buildActivity(cfg, state) {
   if (state.idle && cfg.quandoOcioso !== "mostrar") return null;
   const show = cfg.mostrar || {};
@@ -271,7 +293,8 @@ function buildActivity(cfg, state) {
   const privado = projCfg.privado === true;
 
   let atividade = "";
-  if (state.idle) atividade = cfg.textoOcioso || "";
+  if (state.awayMs !== null) atividade = (cfg.textoAusente || "").replace("{tempo}", formatAway(state.awayMs));
+  else if (state.idle) atividade = cfg.textoOcioso || "";
   else if (state.focusItem && state.focus) atividade = cfg.atividades?.[state.focusItem.type] || cfg.atividades?.dynamic_tool || "";
   else atividade = cfg.atividades?.entreTarefas || "";
 
@@ -451,7 +474,7 @@ async function tick() {
   status.erro = "";
   if (status.t3) {
     try {
-      activity = buildActivity(cfg, readState(cfg));
+      activity = buildActivity(cfg, { ...readState(cfg), awayMs: awayMs(cfg) });
     } catch (e) {
       log("falha lendo o estado do T3 (o formato do banco mudou?):", e.message);
       status.erro = "falha lendo o estado do T3";
@@ -537,7 +560,15 @@ async function onTrayCommand(line) {
   const [cmd] = line.split(" ", 1);
   const rest = line.slice(cmd.length).trim();
   try {
-    if (cmd === "quit") {
+    if (cmd === "input") {
+      inputIdleMs = Math.max(0, Number(rest) || 0);
+      inputSeenAt = Date.now();
+      // Chega a cada 2 s: só acorda o laço quando muda entre presente e ausente, senão o
+      // intervalo vira 2 s. Na volta, o card troca na hora.
+      const away = config ? awayMs(config) !== null : false;
+      if (away === wasAway) return;
+      wasAway = away;
+    } else if (cmd === "quit") {
       log("saindo pela bandeja");
       // O Discord limpa o card quando a conexão cai; mandar null antes só deixa mais rápido.
       if (ipc?.ready) await ipc.setActivity(null);

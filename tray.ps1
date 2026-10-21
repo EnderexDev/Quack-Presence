@@ -51,6 +51,18 @@ $icons = @{
   erro    = New-StateIcon "#ED4245"  # Discord fora ou o programa não responde
 }
 
+# Tempo desde o último teclado ou mouse, para o "longe do PC". unchecked: o TickCount dá a volta em 49,7 dias.
+Add-Type -Namespace T3P -Name Input -MemberDefinition @"
+[StructLayout(LayoutKind.Sequential)] struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+[DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+public static long IdleMs() {
+  var li = new LASTINPUTINFO();
+  li.cbSize = (uint)Marshal.SizeOf(li);
+  if (!GetLastInputInfo(ref li)) return -1;
+  return unchecked((uint)Environment.TickCount - li.dwTime);
+}
+"@
+
 $tipos = @{ 0 = "Jogando"; 2 = "Ouvindo"; 3 = "Assistindo"; 5 = "Competindo" }
 
 # ---------- menu ----------
@@ -164,7 +176,7 @@ function Show-Settings {
   $f.StartPosition = [Windows.Forms.FormStartPosition]::CenterScreen
   $f.Font = New-Object Drawing.Font "Segoe UI", 9
   $f.AutoScaleMode = [Windows.Forms.AutoScaleMode]::Font
-  $f.ClientSize = New-Object Drawing.Size 400, 470
+  $f.ClientSize = New-Object Drawing.Size 400, 500
   $f.Icon = $icons.ok
   $script:form = $f
 
@@ -246,6 +258,9 @@ function Show-Settings {
   Add-Label "Minutos até ficar ocioso" $y
   $minutos = Add-Number $(if ($null -ne $cfg.ociosoMinutos) { $cfg.ociosoMinutos } else { 15 }) 1 240 $y
   $y += 30
+  Add-Label "Minutos até 'longe do PC' (0 desliga)" $y
+  $ausente = Add-Number $(if ($null -ne $cfg.ausenteMinutos) { $cfg.ausenteMinutos } else { 5 }) 0 240 $y
+  $y += 30
   Add-Label "Atualizar a cada (segundos)" $y
   $intervalo = Add-Number $(if ($null -ne $cfg.intervaloSegundos) { $cfg.intervaloSegundos } else { 5 }) 3 3600 $y
   $y += 34
@@ -275,20 +290,20 @@ function Show-Settings {
   $btnArquivo = New-Object Windows.Forms.Button
   $btnArquivo.Text = "Abrir config.json"
   $btnArquivo.AutoSize = $true
-  $btnArquivo.Location = New-Object Drawing.Point 16, 430
+  $btnArquivo.Location = New-Object Drawing.Point 16, 460
   $btnArquivo.add_Click({ Open-File $configPath })
   $f.Controls.Add($btnArquivo)
 
   $btnSalvar = New-Object Windows.Forms.Button
   $btnSalvar.Text = "Salvar"
-  $btnSalvar.Location = New-Object Drawing.Point 228, 430
+  $btnSalvar.Location = New-Object Drawing.Point 228, 460
   $btnSalvar.DialogResult = [Windows.Forms.DialogResult]::OK
   $f.Controls.Add($btnSalvar)
   $f.AcceptButton = $btnSalvar
 
   $btnCancelar = New-Object Windows.Forms.Button
   $btnCancelar.Text = "Cancelar"
-  $btnCancelar.Location = New-Object Drawing.Point 309, 430
+  $btnCancelar.Location = New-Object Drawing.Point 309, 460
   $btnCancelar.DialogResult = [Windows.Forms.DialogResult]::Cancel
   $f.Controls.Add($btnCancelar)
   $f.CancelButton = $btnCancelar
@@ -302,6 +317,7 @@ function Show-Settings {
       tipo                 = [string]$tipo.SelectedItem
       quandoOcioso         = [string]$ocioso.SelectedItem
       ociosoMinutos        = [int]$minutos.Value
+      ausenteMinutos       = [int]$ausente.Value
       intervaloSegundos    = [int]$intervalo.Value
       seguirUltimaMensagem = $seguir.Checked
     }
@@ -329,6 +345,8 @@ $timer.add_Tick({
     [Windows.Forms.Application]::Exit()
     return
   }
+  $idle = [T3P.Input]::IdleMs()
+  if ($idle -ge 0) { Send "input $idle" }
   Update-Status
 })
 

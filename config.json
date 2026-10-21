@@ -66,8 +66,11 @@
   },
 
   "ociosoMinutos": 15,
-  "quandoOcioso": "esconder",
+  "quandoOcioso": "mostrar",
   "textoOcioso": "Pensando no próximo passo",
+
+  "ausenteMinutos": 5,
+  "textoAusente": "Longe do PC há {tempo}",
 
   "seguirUltimaMensagem": true,
 
