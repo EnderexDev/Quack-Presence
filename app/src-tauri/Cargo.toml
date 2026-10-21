@@ -1,0 +1,20 @@
+[package]
+name = "t3-presence-tray"
+version = "1.0.0"
+description = "T3 Presence: o ícone na bandeja e a janela de configurações"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+# custom-protocol direto: o build é `cargo build --release`, sem o CLI do Tauri que o ligaria,
+# e sem ele o exe procuraria um servidor de desenvolvimento em vez da pasta ui embutida.
+tauri = { version = "2.12", features = ["tray-icon", "image-png", "custom-protocol"] }
+serde_json = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

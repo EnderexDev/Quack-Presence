@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>T3 Presence</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="tray.js"></script>
+</head>
+<body class="traybody">
+  <div class="tray chunk" id="tray">
+    <div class="trayhead sky">
+      <div class="cloud" style="top:12%;left:52%;width:26%;height:16%"></div>
+      <div class="cloud" style="top:6%;left:64%;width:16%;height:20%"></div>
+      <div class="cloud" style="bottom:-14%;right:-6%;width:44%;height:30%;background:rgba(255,255,255,.4)"></div>
+      <img src="capivara.png" alt="">
+      <div class="who"><span class="display">T3 Presence</span><span id="app"></span></div>
+    </div>
+    <div class="state chunk"><span class="dot" id="dot"></span><span id="estado">Carregando...</span></div>
+    <div id="card"></div>
+    <div id="modes"></div>
+    <div class="trayfoot">
+      <div class="row">
+        <button class="btn yellow chunk-bright press" id="settings">Configurações</button>
+        <button class="btn dark chunk press" id="quit">Sair</button>
+      </div>
+      <div class="row">
+        <button class="btn dark chunk press" id="reconnect">Reconectar</button>
+        <button class="btn dark chunk press file" id="config">config.json</button>
+        <button class="btn dark chunk press file" id="log">log</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

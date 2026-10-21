@@ -540,16 +540,23 @@ let wake = null;
 // Comando que chega durante o tick() não acha o wake: fica marcado e o ciclo seguinte não espera.
 let wakePending = false;
 
-// tray.ps1 desenha o ícone e o menu; fala com este processo por linhas no stdout dele.
+// O app da bandeja (app/, Tauri) desenha o ícone, o painel e as configurações; sem o exe
+// compilado, o tray.ps1 faz o mesmo em WinForms. Os dois falam por linhas no stdout deles, e o
+// app sai quando o stdin fecha, o que acontece quando este processo morre de qualquer jeito.
 // Nos testes (pipe falso) ou com T3P_NO_TRAY, não abre.
+const TRAY_EXE = path.join(DIR, "app", "src-tauri", "target", "release", "t3-presence-tray.exe");
+
 function startTray() {
   if (process.env.T3P_IPC_PIPE || process.env.T3P_NO_TRAY) return;
-  const script = path.join(DIR, "tray.ps1");
-  const args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-WindowStyle", "Hidden"];
-  const child = spawn("powershell.exe", [...args, "-File", script, String(process.pid)], {
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  let cmd, args;
+  if (fs.existsSync(TRAY_EXE)) {
+    [cmd, args] = [TRAY_EXE, ["--dir", DIR]];
+  } else {
+    const ps = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-WindowStyle", "Hidden"];
+    [cmd, args] = ["powershell.exe", [...ps, "-File", path.join(DIR, "tray.ps1"), String(process.pid)]];
+  }
+  log("bandeja:", path.basename(cmd));
+  const child = spawn(cmd, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
   child.on("error", (e) => log("bandeja não abriu:", e.message));
   child.on("exit", (code) => log("bandeja fechou, código", code));
   child.stderr.on("data", (d) => log("bandeja:", d.toString().trim()));

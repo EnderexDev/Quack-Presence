@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "As duas janelas só falam com os comandos do próprio app",
+  "windows": ["settings", "tray"],
+  "permissions": ["core:default", "core:window:allow-hide"]
+}
