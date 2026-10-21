@@ -154,6 +154,8 @@ function render() {
 }
 
 async function save() {
+  // Na tela de JSON inválido (ou antes do primeiro estado) não há formulário para salvar
+  if (!draft || !view.configOk) return;
   // Um número digitado ainda sem change entra também
   document.activeElement?.blur();
   const { iniciar, ...patch } = draft;

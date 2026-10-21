@@ -45,6 +45,12 @@ export const dotFor = (nivel) => ({ ok: "live", parado: "", erro: "bad" })[nivel
 /** O estado atual e cada um que chegar depois */
 export async function start(onView) {
   // Ouve antes de pedir: um erro no primeiro desenho não pode deixar a janela surda às próximas
-  await listen("view", (event) => onView(event.payload ?? {}));
-  onView((await invoke("get_view")) ?? {});
+  // e um evento que chegue enquanto o get_view responde é mais novo que a resposta dele.
+  let evented = false;
+  await listen("view", (event) => {
+    evented = true;
+    onView(event.payload ?? {});
+  });
+  const first = await invoke("get_view");
+  if (!evented) onView(first ?? {});
 }
