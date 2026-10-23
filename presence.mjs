@@ -1,4 +1,4 @@
-// Discord Rich Presence para o T3 Code.
+// Quack Presence: Discord Rich Presence para o T3 Code e o Roblox.
 // Lê o estado do T3 (statev2.sqlite, só leitura) e publica no Discord pelo IPC local. Com o Roblox
 // aberto, publica também um card "Jogando" do jogo, lido do log do Roblox Player, num app à parte.
 // Uso: node presence.mjs            (roda para sempre)
@@ -760,7 +760,7 @@ let wakePending = false;
 // compilado, o tray.ps1 faz o mesmo em WinForms. Os dois falam por linhas no stdout deles, e o
 // app sai quando o stdin fecha, o que acontece quando este processo morre de qualquer jeito.
 // Nos testes (pipe falso) ou com T3P_NO_TRAY, não abre.
-const TRAY_EXE = path.join(DIR, "app", "src-tauri", "target", "release", "t3-presence-tray.exe");
+const TRAY_EXE = path.join(DIR, "app", "src-tauri", "target", "release", "quack-presence-tray.exe");
 
 function startTray() {
   if (process.env.T3P_IPC_PIPE || process.env.T3P_NO_TRAY) return;
@@ -823,7 +823,7 @@ async function main() {
   }
   // Trava de instância única: o Windows solta o pipe quando o processo morre, sem arquivo velho.
   // Com o pipe falso dos testes a trava é outra, para o teste rodar junto com o programa em uso.
-  const lockName = process.env.T3P_IPC_PIPE ? `t3-presence-lock-test-${process.pid}` : "t3-presence-lock";
+  const lockName = process.env.T3P_IPC_PIPE ? `quack-presence-lock-test-${process.pid}` : "quack-presence-lock";
   const locked = await new Promise((resolve) => {
     const lock = net.createServer((s) => s.destroy());
     lock.once("error", () => resolve(false));

@@ -1,7 +1,7 @@
 [package]
-name = "t3-presence-tray"
+name = "quack-presence-tray"
 version = "1.0.0"
-description = "T3 Presence: o ícone na bandeja e a janela de configurações"
+description = "Quack Presence: o ícone na bandeja e a janela de configurações"
 edition = "2021"
 
 [build-dependencies]

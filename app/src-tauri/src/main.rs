@@ -1,4 +1,4 @@
-// T3 Presence: o ícone na bandeja, o painel e a janela de configurações.
+// Quack Presence: o ícone na bandeja, o painel e a janela de configurações.
 //
 // Quem faz o trabalho é o presence.mjs, que abre este exe como filho e passa a pasta dele em
 // --dir. O protocolo é o mesmo do tray.ps1 que este app substitui: comandos em linhas no stdout
@@ -18,7 +18,7 @@ use tauri::image::Image;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Rect, RunEvent, WebviewWindow, WindowEvent};
 
-const TRAY_ID: &str = "t3-presence";
+const TRAY_ID: &str = "quack-presence";
 const TRAY_WIDTH: f64 = 320.0;
 /** Espaço entre o painel e a barra de tarefas, em pixels físicos */
 const TRAY_GAP: f64 = 10.0;
@@ -59,7 +59,7 @@ fn now_ms() -> f64 {
 
 fn startup_link() -> Option<PathBuf> {
     let appdata = std::env::var_os("APPDATA")?;
-    Some(PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Startup\t3-presence.vbs"))
+    Some(PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Startup\quack-presence.vbs"))
 }
 
 /** Nome do tipo de atividade do Discord, como o card mostra */
@@ -133,7 +133,7 @@ fn tooltip_for(view: &Value) -> String {
         (true, false) => l2.to_string(),
         (false, false) => format!("{l1} · {l2}"),
     };
-    clip_utf16(&format!("T3 Presence: {body}"), TOOLTIP_UTF16)
+    clip_utf16(&format!("Quack Presence: {body}"), TOOLTIP_UTF16)
 }
 
 /** O szTip do Windows tem 128 unidades UTF-16 com o terminador; um emoji conta duas */
@@ -500,14 +500,14 @@ mod tests {
         let tip = tooltip_for(&json!({ "estado": "", "linha1": "🦫".repeat(100), "linha2": "" }));
         assert!(tip.encode_utf16().count() <= TOOLTIP_UTF16, "{}", tip.encode_utf16().count());
         assert!(tip.ends_with('…') && tip.trim_end_matches('…').ends_with('🦫'));
-        assert_eq!(tooltip_for(&json!({ "estado": "x", "linha1": "", "linha2": "Revisando" })), "T3 Presence: Revisando", "só a linha 2");
-        assert_eq!(tooltip_for(&json!({ "estado": "Ocioso, card escondido", "linha1": "", "linha2": "" })), "T3 Presence: Ocioso, card escondido");
+        assert_eq!(tooltip_for(&json!({ "estado": "x", "linha1": "", "linha2": "Revisando" })), "Quack Presence: Revisando", "só a linha 2");
+        assert_eq!(tooltip_for(&json!({ "estado": "Ocioso, card escondido", "linha1": "", "linha2": "" })), "Quack Presence: Ocioso, card escondido");
     }
 
     #[test]
     fn the_folder_comes_from_dir() {
-        let args: Vec<String> = ["exe", "--dir", r"E:\Documents\Dev\T3 Presence"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(dir_from_args(&args), PathBuf::from(r"E:\Documents\Dev\T3 Presence"));
+        let args: Vec<String> = ["exe", "--dir", r"E:\Documents\Dev\Quack Presence"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(dir_from_args(&args), PathBuf::from(r"E:\Documents\Dev\Quack Presence"));
     }
 
     #[test]
@@ -559,7 +559,7 @@ fn main() {
             // de tarefas, e um jogo em tela cheia o cobre. Sair fica no painel.
             TrayIconBuilder::with_id(TRAY_ID)
                 .icon(Image::from_bytes(ICON_PARADO)?)
-                .tooltip("T3 Presence")
+                .tooltip("Quack Presence")
                 .on_tray_icon_event(|tray, event| {
                     let app = tray.app_handle();
                     if let TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } = event {
@@ -601,7 +601,7 @@ fn main() {
             _ => {}
         })
         .build(tauri::generate_context!())
-        .expect("T3 Presence: a bandeja não abriu")
+        .expect("Quack Presence: a bandeja não abriu")
         .run(|_app, event| {
             if let RunEvent::ExitRequested { code: None, api, .. } = event {
                 api.prevent_exit();

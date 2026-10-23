@@ -1,4 +1,4 @@
-﻿# Ícone do T3 Presence na bandeja do Windows. Aberto pelo presence.mjs, que passa o próprio pid.
+﻿# Ícone do Quack Presence na bandeja do Windows. Aberto pelo presence.mjs, que passa o próprio pid.
 # Manda comandos por linhas no stdout (quit, reconnect, config {json}) e lê o estado em
 # presence.status.json, que o presence.mjs reescreve a cada ciclo. Fecha sozinho se o pai morrer.
 param([int]$ParentPid)
@@ -11,7 +11,7 @@ $dir = $PSScriptRoot
 $statusPath = Join-Path $dir "presence.status.json"
 $configPath = Join-Path $dir "config.json"
 $logPath = Join-Path $dir "presence.log"
-$startupLink = Join-Path ([Environment]::GetFolderPath("Startup")) "t3-presence.vbs"
+$startupLink = Join-Path ([Environment]::GetFolderPath("Startup")) "quack-presence.vbs"
 
 function Send([string]$line) {
   [Console]::Out.WriteLine($line)
@@ -69,7 +69,7 @@ $tipos = @{ 0 = "Jogando"; 2 = "Ouvindo"; 3 = "Assistindo"; 5 = "Competindo" }
 
 $notify = New-Object Windows.Forms.NotifyIcon
 $notify.Icon = $icons.parado
-$notify.Text = "T3 Presence"
+$notify.Text = "Quack Presence"
 $menu = New-Object Windows.Forms.ContextMenuStrip
 
 $itemEstado = $menu.Items.Add("Carregando...")
@@ -120,7 +120,7 @@ function Update-Status {
   $itemLinha2.Text = $linha2
   $itemLinha2.Visible = [bool]$linha2
   $notify.Icon = $icons[$icon]
-  $tip = "T3 Presence: " + $(if ($linha1) { "$linha1 · $linha2".Trim(" ·") } else { $estado })
+  $tip = "Quack Presence: " + $(if ($linha1) { "$linha1 · $linha2".Trim(" ·") } else { $estado })
   # NotifyIcon.Text estoura acima de 63 caracteres.
   if ($tip.Length -gt 63) { $tip = $tip.Substring(0, 62) + "…" }
   $notify.Text = $tip
@@ -163,13 +163,13 @@ function Show-Settings {
   }
   $cfg = Read-Json $configPath
   if (-not $cfg) {
-    [void][Windows.Forms.MessageBox]::Show("config.json não abriu (JSON inválido?). Corrija o arquivo.", "T3 Presence")
+    [void][Windows.Forms.MessageBox]::Show("config.json não abriu (JSON inválido?). Corrija o arquivo.", "Quack Presence")
     Open-File $configPath
     return
   }
 
   $f = New-Object Windows.Forms.Form
-  $f.Text = "T3 Presence: configurações"
+  $f.Text = "Quack Presence: configurações"
   $f.FormBorderStyle = [Windows.Forms.FormBorderStyle]::FixedDialog
   $f.MaximizeBox = $false
   $f.MinimizeBox = $false

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "T3 Presence",
+  "productName": "Quack Presence",
   "version": "1.0.0",
-  "identifier": "dev.enderex.t3presence",
+  "identifier": "dev.enderex.quackpresence",
   "build": {
     "frontendDist": "../ui"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "settings",
-        "title": "T3 Presence",
+        "title": "Quack Presence",
         "url": "settings.html",
         "width": 480,
         "height": 700,
@@ -24,7 +24,7 @@
       },
       {
         "label": "tray",
-        "title": "T3 Presence",
+        "title": "Quack Presence",
         "url": "tray.html",
         "width": 320,
         "height": 400,

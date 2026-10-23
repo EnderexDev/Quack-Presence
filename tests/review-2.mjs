@@ -76,7 +76,7 @@ const frame = (op, text) => {
 // Achado 4: conexão na trava do daemon é fechada pelo outro lado.
 {
   const closed = await new Promise((resolve) => {
-    const c = net.createConnection("\\\\?\\pipe\\t3-presence-lock");
+    const c = net.createConnection("\\\\?\\pipe\\quack-presence-lock");
     c.on("error", () => resolve("erro"));
     c.on("close", () => resolve("fechada"));
     setTimeout(() => resolve("aberta após 3s"), 3000);
