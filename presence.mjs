@@ -1,5 +1,6 @@
 // Discord Rich Presence para o T3 Code.
-// Lê o estado do T3 (statev2.sqlite, só leitura) e publica no Discord pelo IPC local.
+// Lê o estado do T3 (statev2.sqlite, só leitura) e publica no Discord pelo IPC local. Com o Roblox
+// aberto, publica também um card "Jogando" do jogo, lido do log do Roblox Player, num app à parte.
 // Uso: node presence.mjs            (roda para sempre)
 //      node presence.mjs --once     (publica uma vez, imprime o que mandou e sai)
 //      node presence.mjs --dry      (só imprime a atividade calculada, sem Discord)
@@ -103,15 +104,11 @@ function t3Running() {
   }
 }
 
-// Jogo aberto: o Discord mostra um "Jogando" por vez, e o do jogo esconde o nosso.
-// tasklist custa ~100 ms, então o resultado vale por 30 s.
-let gameCache = { key: "", at: 0, running: false };
-function gameRunning(cfg) {
-  const games = (cfg.jogos || []).map((g) => g.toLowerCase());
-  if (!games.length) return false;
-  const key = games.join("|");
-  if (gameCache.key === key && Date.now() - gameCache.at < 30_000) return gameCache.running;
-  let running = false;
+// Nomes dos .exe abertos, em minúsculas. tasklist custa ~100 ms, então a lista vale por 30 s.
+let exeCache = { at: 0, names: new Set() };
+function runningExes() {
+  if (Date.now() - exeCache.at < 30_000) return exeCache.names;
+  let names = new Set();
   try {
     // chcp 65001: sem ele o tasklist sai na página OEM (850) e um .exe com acento não bate.
     const out = execFileSync("cmd", ["/d", "/c", "chcp 65001 >nul & tasklist /fo csv /nh"], {
@@ -119,10 +116,140 @@ function gameRunning(cfg) {
       windowsHide: true,
     });
     // Primeiro campo entre aspas inteiro: um nome de .exe pode ter vírgula.
-    running = out.split("\n").some((l) => games.includes(l.match(/^"([^"]*)"/)?.[1].toLowerCase()));
+    names = new Set(out.split("\n").map((l) => l.match(/^"([^"]*)"/)?.[1].toLowerCase()).filter(Boolean));
   } catch {}
-  gameCache = { key, at: Date.now(), running };
-  return running;
+  exeCache = { at: Date.now(), names };
+  return names;
+}
+
+// Jogo aberto: o Discord mostra um "Jogando" por vez, e o do jogo esconde o nosso.
+function gameRunning(cfg) {
+  const games = (cfg.jogos || []).map((g) => g.toLowerCase());
+  if (!games.length) return false;
+  const names = runningExes();
+  return games.some((g) => names.has(g));
+}
+
+// ---------- estado do Roblox ----------
+
+// O Roblox Player escreve no log cada entrada num servidor: "! Joining game '<jobId>' place <placeId>",
+// logo seguida de "game_join_loadtime: ... universeid:<id>, referral_page:<origem>". Um teleporte
+// escreve as duas de novo. Voltar para o app (fora de jogo) escreve "setStage: (stage:Native)".
+// T3P_ROBLOX_LOGS e T3P_ROBLOX_RUNNING (1/0) trocam a pasta e o processo nos testes.
+const ROBLOX_LOGS = process.env.T3P_ROBLOX_LOGS || path.join(process.env.LOCALAPPDATA || "", "Roblox", "logs");
+const ROBLOX_EXE = "robloxplayerbeta.exe";
+let rbx = { file: "", offset: 0, rest: "", join: null, session: null };
+
+function robloxRunning() {
+  const env = process.env.T3P_ROBLOX_RUNNING;
+  if (env !== undefined) return env === "1";
+  return runningExes().has(ROBLOX_EXE);
+}
+
+function readRobloxSession() {
+  if (!robloxRunning()) {
+    rbx.session = null;
+    return null;
+  }
+  // O log mais novo do Player (o do Studio e o do CrashHandler ficam de fora). O Roblox abre um log
+  // curto de inicialização junto, mas o da sessão é o que segue sendo escrito.
+  let newest = null;
+  try {
+    for (const name of fs.readdirSync(ROBLOX_LOGS)) {
+      if (!/_Player_[0-9A-F]+_last\.log$/i.test(name)) continue;
+      const mtime = fs.statSync(path.join(ROBLOX_LOGS, name)).mtimeMs;
+      if (!newest || mtime > newest.mtime) newest = { name, mtime };
+    }
+  } catch {}
+  if (!newest) return null;
+  if (newest.name !== rbx.file) rbx = { file: newest.name, offset: 0, rest: "", join: null, session: null };
+
+  // Só o que entrou desde a última leitura: o log de uma tarde passa de 10 MB.
+  const full = path.join(ROBLOX_LOGS, rbx.file);
+  const fd = fs.openSync(full, "r");
+  try {
+    const size = fs.fstatSync(fd).size;
+    if (size < rbx.offset) rbx = { ...rbx, offset: 0, rest: "", join: null, session: null };
+    if (size > rbx.offset) {
+      const buf = Buffer.alloc(size - rbx.offset);
+      fs.readSync(fd, buf, 0, buf.length, rbx.offset);
+      rbx.offset = size;
+      const lines = (rbx.rest + buf.toString("utf8")).split("\n");
+      rbx.rest = lines.pop();
+      for (const line of lines) parseRobloxLine(line);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return rbx.session;
+}
+
+function parseRobloxLine(line) {
+  let m;
+  if ((m = line.match(/! Joining game '([0-9a-f-]+)' place (\d+)/))) {
+    rbx.join = { jobId: m[1], placeId: m[2], at: Date.parse(line.slice(0, 24)) || Date.now() };
+  } else if ((m = line.match(/game_join_loadtime: placeid:(\d+),.*?universeid:(\d+), referral_page:([^,]*)/))) {
+    const prev = rbx.session;
+    const universeId = m[2];
+    // Teleporte dentro do mesmo jogo chega com referral_page vazio: o tempo de jogo e o servidor
+    // privado continuam os da entrada.
+    const same = prev?.universeId === universeId && m[3] === "";
+    rbx.session = {
+      jobId: rbx.join?.jobId || "",
+      placeId: m[1],
+      universeId,
+      privado: m[3] === "RequestPrivateGame" || (same && prev.privado),
+      desde: same ? prev.desde : rbx.join?.at || Date.now(),
+    };
+  } else if (line.includes("setStage: (stage:Native)") || line.includes("leaveUGCGame")) {
+    rbx.join = null;
+    rbx.session = null;
+  }
+}
+
+// Nome, jogadores e ícone pela API pública, guardados por jogo. Cada valor novo de jogadores é um
+// SET_ACTIVITY, então ele só é relido a cada atualizarSegundos. T3P_ROBLOX_API troca as duas URLs
+// por um servidor de teste (<base>/games e <base>/icons).
+const ROBLOX_API = process.env.T3P_ROBLOX_API;
+const gameInfo = new Map();
+
+async function fetchJson(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} em ${url}`);
+  return res.json();
+}
+
+async function robloxGame(cfg, universeId) {
+  const cached = gameInfo.get(universeId);
+  const ttl = Math.max(30, Number(cfg.roblox?.atualizarSegundos) || 60) * 1000;
+  if (cached && Date.now() - cached.at < ttl) return cached;
+  const id = encodeURIComponent(universeId);
+  const gamesUrl = ROBLOX_API ? `${ROBLOX_API}/games?universeIds=${id}` : `https://games.roblox.com/v1/games?universeIds=${id}`;
+  const iconUrl = ROBLOX_API
+    ? `${ROBLOX_API}/icons?universeIds=${id}`
+    : `https://thumbnails.roblox.com/v1/games/icons?universeIds=${id}&size=512x512&format=Png`;
+  try {
+    const g = (await fetchJson(gamesUrl)).data?.[0];
+    if (!g) throw new Error("jogo não encontrado");
+    let icone = cached?.icone || "";
+    if (!icone) {
+      try {
+        const t = (await fetchJson(iconUrl)).data?.[0];
+        if (t?.state === "Completed") icone = t.imageUrl || "";
+      } catch (e) {
+        log("ícone do jogo não veio:", e.message);
+      }
+    }
+    const info = { at: Date.now(), nome: g.name || "", jogando: g.playing ?? null, criador: g.creator?.name || "", icone };
+    gameInfo.set(universeId, info);
+    return info;
+  } catch (e) {
+    log("API do Roblox falhou:", e.message);
+    // Guarda a falha pelo mesmo tempo: sem isso a API é chamada a cada ciclo enquanto estiver fora.
+    const info = { ...(cached || { nome: "", jogando: null, criador: "", icone: "" }), at: Date.now() };
+    gameInfo.set(universeId, info);
+    return info;
+  }
 }
 
 let stickyRunId = null;
@@ -340,6 +467,47 @@ function buildActivity(cfg, state) {
   return activity;
 }
 
+// Card "Jogando" do Roblox, num app do Discord só dele (o título do card é o nome do app).
+// Uma linha que pede um valor que não veio (a API fora do ar) sai do card em vez de ficar pela metade.
+function buildRobloxActivity(cfg, session, info) {
+  const r = cfg.roblox || {};
+  const values = {
+    jogo: info?.nome || "Roblox",
+    jogando: info?.jogando != null ? Number(info.jogando).toLocaleString("pt-BR") : "",
+    criador: info?.criador || "",
+  };
+  const line = (template) => {
+    if (!template) return undefined;
+    const keys = [...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+    return keys.some((k) => !values[k]) ? undefined : clamp(fill(template, values));
+  };
+  const activity = {
+    type: TYPES.jogando,
+    details: line(r.linha1 ?? "{jogo}"),
+    state: line(r.linha2),
+    timestamps: r.timer === false ? undefined : { start: session.desde },
+    instance: false,
+  };
+  if ((r.textoNaListaDeMembros ?? "linha1") in DISPLAY) activity.status_display_type = DISPLAY[r.textoNaListaDeMembros ?? "linha1"];
+
+  const image = info?.icone || r.imagem;
+  if (image) activity.assets = { large_image: image, large_text: line(r.textoImagem) };
+
+  // Servidor privado não aceita quem chega pelo jobId: lá só vai o botão da página do jogo.
+  const buttons = [];
+  if (r.botaoEntrar && session.jobId && !session.privado)
+    buttons.push({
+      label: r.botaoEntrar,
+      url: `https://www.roblox.com/games/start?placeId=${session.placeId}&gameInstanceId=${session.jobId}`,
+    });
+  if (r.botaoJogo) buttons.push({ label: r.botaoJogo, url: `https://www.roblox.com/games/${session.placeId}` });
+  if (buttons.length) activity.buttons = buttons.map((b) => ({ label: b.label.slice(0, 32), url: b.url }));
+
+  for (const obj of [activity, activity.assets || {}])
+    for (const k of Object.keys(obj)) if (obj[k] === undefined) delete obj[k];
+  return activity;
+}
+
 // ---------- IPC do Discord ----------
 
 class DiscordIpc {
@@ -461,18 +629,63 @@ class DiscordIpc {
 
 // ---------- laço principal ----------
 
-let ipc = null;
-let lastSent = undefined;
+// Uma conexão por app do Discord: cada conexão carrega uma atividade só, e o título do card é o
+// nome do app. O do T3 fica sempre conectado; o do Roblox só existe com um jogo aberto, e fechar a
+// conexão tira o card dele do perfil.
+const channels = { t3: { ipc: null, lastSent: undefined }, roblox: { ipc: null, lastSent: undefined } };
 let reconnectWanted = false;
 // O que a bandeja mostra: lido de presence.status.json a cada poucos segundos.
-const status = { t3: false, discord: false, app: "", card: null, erro: "", pausado: false };
+const status = { t3: false, discord: false, app: "", card: null, roblox: null, erro: "", pausado: false };
+
+function closeChannel(ch) {
+  ch.ipc?.close();
+  ch.ipc = null;
+  ch.lastSent = undefined;
+}
+
+// Conecta se preciso e manda a atividade quando ela mudou. Devolve a resposta do Discord, "igual"
+// quando não havia nada novo, ou null quando o Discord não atende.
+async function publish(name, clientId, activity) {
+  const ch = channels[name];
+  if (!ch.ipc || ch.ipc.clientId !== clientId || !ch.ipc.ready) {
+    closeChannel(ch);
+    const ipc = new DiscordIpc(clientId);
+    if (!(await ipc.connect())) return null;
+    ch.ipc = ipc;
+    log(`conectado ao Discord (${name})`);
+  }
+  const key = JSON.stringify(activity);
+  if (key === ch.lastSent) return "igual";
+  const res = await ch.ipc.setActivity(activity);
+  if (res.evt === "ERROR") {
+    log(`Discord recusou a atividade (${name}):`, JSON.stringify(res.data), "enviado:", key);
+    status.erro = `Discord recusou: ${res.data?.message || "?"}`;
+    return res;
+  }
+  ch.lastSent = key;
+  log(`atividade (${name}):`, key, "| app:", res.data?.name);
+  if (ARGS.has("--once")) console.log(`resposta do Discord (${name}):`, JSON.stringify(res.data));
+  return res;
+}
+
+async function robloxActivity(cfg) {
+  if (cfg.roblox?.ativo === false || !cfg.roblox?.clientId) return null;
+  try {
+    const session = readRobloxSession();
+    if (!session) return null;
+    return buildRobloxActivity(cfg, session, await robloxGame(cfg, session.universeId));
+  } catch (e) {
+    log("falha lendo o Roblox:", e.message);
+    return null;
+  }
+}
 
 async function tick() {
   const cfg = loadConfig();
   let activity = null;
   status.t3 = t3Running();
   status.erro = "";
-  // Desligado pela bandeja: o card sai do Discord e o programa segue aberto, até ligar de novo
+  // Desligado pela bandeja: os cards saem do Discord e o programa segue aberto, até ligar de novo
   const pausado = cfg.ativo === false;
   if (pausado !== status.pausado) log(pausado ? "desligado pela bandeja" : "ligado pela bandeja");
   status.pausado = pausado;
@@ -489,45 +702,44 @@ async function tick() {
       activity = null;
     }
   }
+  const roblox = pausado ? null : await robloxActivity(cfg);
 
   if (ARGS.has("--dry")) {
-    console.log(JSON.stringify(activity, null, 2));
+    console.log(JSON.stringify(ARGS.has("--roblox") ? roblox : activity, null, 2));
     return;
   }
 
   if (reconnectWanted) {
     reconnectWanted = false;
-    ipc?.close();
-    ipc = null;
+    closeChannel(channels.t3);
+    closeChannel(channels.roblox);
     log("reconectando a pedido da bandeja");
   }
-  if (!ipc || ipc.clientId !== cfg.clientId || !ipc.ready) {
-    ipc?.close();
-    ipc = new DiscordIpc(cfg.clientId);
-    if (!(await ipc.connect())) {
-      ipc = null;
-      status.discord = false;
-      status.erro ||= "Discord fechado ou sem resposta";
-      return;
-    }
-    log("conectado ao Discord");
-    lastSent = undefined;
-  }
-  status.discord = true;
 
-  const key = JSON.stringify(activity);
-  if (key === lastSent) return;
-  const res = await ipc.setActivity(activity);
-  if (res.evt === "ERROR") {
-    log("Discord recusou a atividade:", JSON.stringify(res.data), "enviado:", key);
-    status.erro = `Discord recusou: ${res.data?.message || "?"}`;
+  const res = await publish("t3", cfg.clientId, activity);
+  if (!res) {
+    closeChannel(channels.t3);
+    closeChannel(channels.roblox);
+    status.discord = false;
+    status.erro ||= "Discord fechado ou sem resposta";
     return;
   }
-  lastSent = key;
-  status.app = res.data?.name || status.app;
-  status.card = activity && { tipo: activity.type, linha1: activity.details || "", linha2: activity.state || "" };
-  log("atividade:", key, "| app:", res.data?.name);
-  if (ARGS.has("--once")) console.log("resposta do Discord:", JSON.stringify(res.data));
+  status.discord = true;
+  if (res !== "igual" && res.evt !== "ERROR") {
+    status.app = res.data?.name || status.app;
+    status.card = activity && { tipo: activity.type, linha1: activity.details || "", linha2: activity.state || "" };
+  }
+
+  if (!roblox) {
+    if (channels.roblox.ipc) log("card do Roblox saiu");
+    closeChannel(channels.roblox);
+    status.roblox = null;
+  } else {
+    const r = await publish("roblox", cfg.roblox.clientId, roblox);
+    if (!r) closeChannel(channels.roblox);
+    else if (r !== "igual" && r.evt !== "ERROR")
+      status.roblox = { app: r.data?.name || "", linha1: roblox.details || "", linha2: roblox.state || "" };
+  }
 }
 
 function writeStatus() {
@@ -582,8 +794,10 @@ async function onTrayCommand(line) {
     } else if (cmd === "quit") {
       log("saindo pela bandeja");
       // O Discord limpa o card quando a conexão cai; mandar null antes só deixa mais rápido.
-      if (ipc?.ready) await ipc.setActivity(null);
-      ipc?.close();
+      for (const ch of Object.values(channels)) {
+        if (ch.ipc?.ready) await ch.ipc.setActivity(null);
+        closeChannel(ch);
+      }
       try {
         fs.unlinkSync(STATUS_PATH);
       } catch {}
@@ -604,14 +818,16 @@ async function main() {
   if (ARGS.has("--once") || ARGS.has("--dry")) {
     await tick();
     if (ARGS.has("--once")) await new Promise((r) => setTimeout(r, 1500));
-    ipc?.close();
+    for (const ch of Object.values(channels)) closeChannel(ch);
     return;
   }
   // Trava de instância única: o Windows solta o pipe quando o processo morre, sem arquivo velho.
+  // Com o pipe falso dos testes a trava é outra, para o teste rodar junto com o programa em uso.
+  const lockName = process.env.T3P_IPC_PIPE ? `t3-presence-lock-test-${process.pid}` : "t3-presence-lock";
   const locked = await new Promise((resolve) => {
     const lock = net.createServer((s) => s.destroy());
     lock.once("error", () => resolve(false));
-    lock.listen("\\\\?\\pipe\\t3-presence-lock", () => resolve(true));
+    lock.listen(`\\\\?\\pipe\\${lockName}`, () => resolve(true));
   });
   if (!locked) {
     console.log("já está rodando");

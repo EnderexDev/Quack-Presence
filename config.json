@@ -44,6 +44,20 @@
 
   "botoes": [],
 
+  "roblox": {
+    "ativo": true,
+    "clientId": "1562973706043793448",
+    "linha1": "{jogo}",
+    "linha2": "{jogando} jogando agora",
+    "textoNaListaDeMembros": "linha1",
+    "textoImagem": "por {criador}",
+    "imagem": "",
+    "timer": true,
+    "botaoEntrar": "Entrar no servidor",
+    "botaoJogo": "Ver jogo",
+    "atualizarSegundos": 60
+  },
+
   "projetos": {
     "No project": { "nome": "Explorando ideias" }
   },

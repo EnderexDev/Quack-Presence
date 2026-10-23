@@ -59,7 +59,7 @@ const server = net.createServer((s) => {
 });
 await new Promise((r) => server.listen(pipe, r));
 const child = spawn("node", ["--no-warnings", path.join(cdir, "presence.mjs")], {
-  env: { ...process.env, T3CODE_HOME: home, T3P_IPC_PIPE: pipe },
+  env: { ...process.env, T3CODE_HOME: home, T3P_IPC_PIPE: pipe, T3P_ROBLOX_RUNNING: "0" },
 });
 
 // Espera o primeiro envio (bloco A), e logo depois troca o banco entre dois ciclos:
