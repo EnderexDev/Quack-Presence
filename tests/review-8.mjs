@@ -75,7 +75,7 @@ const a = await (async () => {
   return JSON.parse(out.split("\n").filter((l) => !l.startsWith("[")).join("\n"));
 })();
 check("jogo público: nome na linha 1", a?.details === "Jogo Um", a?.details);
-check("jogo público: jogadores com milhar", a?.state === "1.234 jogando agora", a?.state);
+check("jogo público: jogadores com milhar", a?.state === "👥 1.234", a?.state);
 check("jogo público: tipo Jogando e lista de membros na linha 1", a?.type === 0 && a?.status_display_type === 2);
 check("jogo público: ícone e criador", a?.assets?.large_image === "https://img.test/um.png" && a?.assets?.large_text === "por Estúdio");
 check(

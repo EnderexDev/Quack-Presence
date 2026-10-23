@@ -48,7 +48,7 @@
     "ativo": true,
     "clientId": "1562973706043793448",
     "linha1": "{jogo}",
-    "linha2": "{jogando} jogando agora",
+    "linha2": "👥 {jogando}",
     "textoNaListaDeMembros": "linha1",
     "textoImagem": "por {criador}",
     "imagem": "",
