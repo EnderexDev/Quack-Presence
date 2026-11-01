@@ -10,7 +10,8 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { Resvg } = require(process.env.RESVG || "@resvg/resvg-js");
+// RESVG relativo vale a partir da pasta atual, não desta.
+const { Resvg } = require(process.env.RESVG ? path.resolve(process.env.RESVG) : "@resvg/resvg-js");
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const assets = path.join(here, "..", "assets");
