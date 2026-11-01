@@ -90,9 +90,9 @@
 <stop offset="1" stop-color="#9A6200"/>
 </linearGradient>
 <linearGradient id="paint3_linear_47_2" x1="350" y1="250" x2="350" y2="450" gradientUnits="userSpaceOnUse">
-<stop stop-color="#C9C0B3"/>
-<stop offset="0.5" stop-color="#9A8F80"/>
-<stop offset="1" stop-color="#5E5548"/>
+<stop stop-color="#8B9099"/>
+<stop offset="0.5" stop-color="#5A5F68"/>
+<stop offset="1" stop-color="#2E3137"/>
 </linearGradient>
 <linearGradient id="paint4_linear_47_2" x1="350" y1="250" x2="350" y2="450" gradientUnits="userSpaceOnUse">
 <stop stop-color="#FFFBE0"/>
