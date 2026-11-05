@@ -92,6 +92,7 @@ cfg.jogos = [];
 cfg.modoAtivo = "completo";
 cfg.mostrar = { ...cfg.mostrar, thread: true };
 cfg.imagem = { ...cfg.imagem, textoGrande: "{projeto}" };
+cfg.textoProjetoPrivado = "Projeto fechado";
 const card = (projetos) => {
   fs.writeFileSync(path.join(cdir, "config.json"), JSON.stringify({ ...cfg, projetos }));
   const out = spawnSync("node", ["--no-warnings", path.join(cdir, "presence.mjs"), "--dry"], {
@@ -112,12 +113,12 @@ const text = (a) => JSON.stringify(a);
 }
 {
   const a = card({ Secreto: { ignorar: true } });
-  check("escondido some do card, fica o outro", !text(a).includes("Secret") && text(a).includes("Visível"), text(a));
+  check("escondido some do card, fica o outro", !/secret/i.test(text(a)) && text(a).includes("Visível"), text(a));
 }
 {
   const a = card({ Secreto: { privado: true, imagem: "https://img.test/secreto.png" } });
   const t = text(a);
-  check("privado troca o nome e tira a conversa", !t.includes("Secreto") && !t.includes("Conversa secreta") && t.includes(cfg.textoProjetoPrivado), t);
+  check("privado troca o nome e tira a conversa", !/secret/i.test(t) && t.includes("Projeto fechado"), t);
   check("privado não usa a imagem do projeto", !t.includes("secreto.png"), t);
 }
 
