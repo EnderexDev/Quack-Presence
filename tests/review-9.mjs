@@ -87,12 +87,23 @@ db.prepare("INSERT INTO orchestration_v2_projection_runs VALUES (?,?,?,?,?,'{}')
 db.close();
 
 fs.copyFileSync(SCRIPT, path.join(cdir, "presence.mjs"));
-const cfg = JSON.parse(fs.readFileSync(path.join(APP, "config.json"), "utf8"));
-cfg.jogos = [];
-cfg.modoAtivo = "completo";
-cfg.mostrar = { ...cfg.mostrar, thread: true };
-cfg.imagem = { ...cfg.imagem, textoGrande: "{projeto}" };
-cfg.textoProjetoPrivado = "Projeto fechado";
+// Config próprio do teste: o config.json da pasta pode estar desligado ou com outro modo
+const cfg = {
+  clientId: "1",
+  ativo: true,
+  modoAtivo: "teste",
+  mostrar: { projeto: true, atividade: true, thread: true, timer: true },
+  modos: { teste: { linha1: "{projeto} · {thread}", linha2: "{atividade}" } },
+  tipo: "jogando",
+  jogos: [],
+  imagem: { grande: "https://img.test/padrao.png", textoGrande: "{projeto}" },
+  roblox: { ativo: false },
+  textoProjetoPrivado: "Projeto fechado",
+  atividades: { entreTarefas: "Revisando" },
+  quandoOcioso: "mostrar",
+  ociosoMinutos: 15,
+  ausenteMinutos: 0,
+};
 const card = (projetos) => {
   fs.writeFileSync(path.join(cdir, "config.json"), JSON.stringify({ ...cfg, projetos }));
   const out = spawnSync("node", ["--no-warnings", path.join(cdir, "presence.mjs"), "--dry"], {
