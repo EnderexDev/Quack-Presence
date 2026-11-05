@@ -32,6 +32,9 @@ const LOCK_PIPE: &str = r"\\.\pipe\quack-presence-lock";
 /** O node:sqlite que o presence.mjs usa funciona sem --experimental-sqlite a partir do Node 22.13 */
 const NODE_MIN: (u32, u32) = (22, 13);
 
+/** A instalação está rodando: a janela não fecha */
+static INSTALLING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 
@@ -347,6 +350,15 @@ pub fn run(mut context: tauri::Context<tauri::Wry>, mode: Mode) {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![setup_info, setup_installed, setup_pick_folder, setup_install, setup_launch, setup_close])
+        .on_window_event(|_, event| {
+            // Alt+F4 no meio da instalação mataria o processo depois do NSIS e antes do config.json
+            // e do .vbs: a janela só fecha quando acaba
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if INSTALLING.load(std::sync::atomic::Ordering::SeqCst) {
+                    api.prevent_close();
+                }
+            }
+        })
         .run(context)
         .expect("Quack Presence: o instalador não abriu");
 }
@@ -419,8 +431,12 @@ async fn setup_install(app: AppHandle, dir: String, startup: bool, desktop: bool
         let dir = PathBuf::from(dir);
         let shortcut = desktop_shortcut();
         let had_shortcut = shortcut.as_ref().is_some_and(|p| p.exists());
-        // A pasta de onde o aberto roda, lida antes do set_startup reescrever o .vbs
-        let old_dir = startup_dir().filter(|d| d.join("presence.mjs").is_file());
+        // A pasta de onde o aberto roda, lida antes do set_startup reescrever o .vbs. Sem .vbs (início
+        // automático desligado, aberto pelo Iniciar), a própria pasta de destino, se já tinha ele.
+        let old_dir = startup_dir()
+            .filter(|d| d.join("presence.mjs").is_file())
+            .or_else(|| dir.join("presence.mjs").is_file().then(|| dir.clone()));
+        INSTALLING.store(true, std::sync::atomic::Ordering::SeqCst);
         // O que está aberto sai antes: o NSIS fecharia a bandeja e deixaria o node sem ela
         let was_running = stop_running();
         let result = (|| {
@@ -443,6 +459,7 @@ async fn setup_install(app: AppHandle, dir: String, startup: bool, desktop: bool
                 let _ = spawn_node(&old);
             }
         }
+        INSTALLING.store(false, std::sync::atomic::Ordering::SeqCst);
         result
     })
     .await
