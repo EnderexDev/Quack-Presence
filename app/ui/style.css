@@ -5,6 +5,8 @@
 */
 @font-face { font-family: "Archivo"; src: url("fonts/Archivo.woff2") format("woff2"); font-weight: 100 900; }
 @font-face { font-family: "Archivo Black"; src: url("fonts/ArchivoBlack.woff2") format("woff2"); font-weight: 400; }
+/* A letra da logo (Fredoka Bold, OFL, fonts/Fredoka-OFL.txt): o nome onde ele aparece como marca */
+@font-face { font-family: "Fredoka"; src: url("fonts/Fredoka.ttf") format("truetype"); font-weight: 300 700; font-stretch: 75% 125%; }
 @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono.woff2") format("woff2"); font-weight: 100 800; }
 
 :root {
@@ -12,11 +14,14 @@
   --ink-500: #6e6458; --ink-400: #9a8f80; --ink-300: #ada294; --ink-200: #f3e9d8; --ink-100: #fff7e6;
   --line: #0a0806; --shade: #050403;
   --brand-300: #ffe27a; --brand-400: #ffd41f; --brand-500: #ffc20a;
+  /* O degradê do nome, de cima pra baixo (Figma "Quack - Logo", lockup "quack-lockup-ouro") */
+  --word-1: #fff6c8; --word-2: #ffcc1f; --word-3: #b87400;
   --sky-100: #afe2ff; --sky-300: #6ec5fb; --sky-500: #2e9be8;
   --live: #4ade80; --live-soft: #a7f3c4; --idle: #f0b232; --busy: #f23f43;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --display: "Archivo Black", "Arial Black", sans-serif;
   --body: "Archivo", system-ui, sans-serif;
+  --logo: "Fredoka", "Arial Rounded MT Bold", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
   color-scheme: dark;
 }
@@ -96,7 +101,6 @@ select.field-input { appearance: none; cursor: pointer; padding-right: 28px; bac
 input.field-input[type="number"] { width: 84px; text-align: right; font-family: var(--mono); }
 input.field-input[type="number"]::-webkit-inner-spin-button { opacity: .4; }
 
-.brandtag { font-family: var(--display); font-size: 12px; letter-spacing: -0.01em; text-transform: uppercase; color: var(--line); background: var(--brand-400); border-radius: 8px; padding: 5px 10px; }
 .bar { margin-top: 9px; height: 6px; width: 84px; border-radius: 4px; background: linear-gradient(90deg, var(--brand-400), #ff8a0f); }
 .card { background: var(--ink-800); border-radius: 18px; padding: 14px; }
 .card > .label { display: block; margin-bottom: 8px; }
@@ -133,11 +137,18 @@ input.field-input[type="number"]::-webkit-inner-spin-button { opacity: .4; }
 /* ---------- Tray panel ---------- */
 body.traybody { background: transparent; overflow: hidden; }
 .tray { margin: 0 0 9px; background: var(--ink-800); border-radius: 20px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.trayhead { border-radius: 14px; height: 74px; display: flex; align-items: center; padding: 0 12px 0 84px; flex: none; }
-.trayhead img { left: 14px; top: 8px; width: 52px; height: 52px; border-radius: 12px; background: var(--ink-100); object-fit: cover; }
-.trayhead .who { position: relative; display: flex; flex-direction: column; gap: 3px; }
-.trayhead .who .display { font-size: 20px; color: var(--line); text-transform: uppercase; }
-.trayhead .who span:last-child { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: #0a3a66; text-transform: uppercase; }
+/* O topo é a marca do app como no painel do Quack (Quack/app/ui/style.css): a logo e o nome em
+   Fredoka com o degradê ouro, direto no painel, sem caixa própria */
+.word { font-family: var(--logo); font-weight: 700; line-height: 1; background: linear-gradient(var(--word-1), var(--word-2) 45%, var(--word-3));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .7)); }
+.brand { display: flex; align-items: center; gap: 9px; flex: none; }
+.brand .mark { width: 30px; height: 30px; flex: none; background: url(logo.svg) center / contain no-repeat; }
+.brand .word { font-size: 23px; padding-bottom: 2px; }
+.trayhead { gap: 12px; height: 58px; padding: 0 4px; }
+.trayhead .mark { width: 46px; height: 46px; }
+.trayhead .who { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.trayhead .who .word { font-size: 26px; white-space: nowrap; }
+.trayhead .who span:last-child { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--ink-400); text-transform: uppercase; }
 .state { display: flex; align-items: center; gap: 10px; border-radius: 12px; background: var(--ink-900); padding: 9px 12px; color: var(--ink-200); font-weight: 600; font-size: 12.5px; }
 .state #estado { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trayfoot { display: flex; flex-direction: column; gap: 8px; }
