@@ -29,8 +29,8 @@ pub const BINARY: &str = "quack-presence-tray.exe";
 const PRODUCT: &str = "Quack Presence";
 /** A trava de instância única do presence.mjs, que também aceita "quit" */
 const LOCK_PIPE: &str = r"\\.\pipe\quack-presence-lock";
-/** O node:sqlite que o presence.mjs usa chegou no Node 22.5 */
-const NODE_MIN: (u32, u32) = (22, 5);
+/** O node:sqlite que o presence.mjs usa funciona sem --experimental-sqlite a partir do Node 22.13 */
+const NODE_MIN: (u32, u32) = (22, 13);
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
@@ -83,7 +83,7 @@ pub fn launch() {
         return;
     };
     if node_version().is_none() {
-        message_box("O Quack Presence precisa do Node.js 22.5 ou mais novo. Instale pelo nodejs.org e abra de novo.");
+        message_box("O Quack Presence precisa do Node.js 22.13 ou mais novo. Instale pelo nodejs.org e abra de novo.");
         return;
     }
     if let Err(e) = spawn_node(&dir) {
@@ -117,7 +117,11 @@ pub fn node_version() -> Option<String> {
 fn node_ok(version: &str) -> bool {
     let mut parts = version.trim_start_matches('v').split('.').map(|p| p.parse::<u32>().unwrap_or(0));
     let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
-    (major, minor) >= NODE_MIN
+    // O 23 só largou a flag no 23.4, depois do 22.13
+    match major {
+        23 => minor >= 4,
+        _ => (major, minor) >= NODE_MIN,
+    }
 }
 
 #[link(name = "user32")]
@@ -174,17 +178,25 @@ fn dir_from_script(text: &str) -> Option<PathBuf> {
  * Numa pasta nova, o config.json da instalação de antes (a do .vbs de início, o checkout de dev
  * até aqui) vem junto: os projetos privados e escondidos dele não podem aparecer no Discord.
  */
-fn carry_config(dest: &Path) -> Option<PathBuf> {
+fn carry_config(dest: &Path) -> Result<(), String> {
     let target = dest.join("config.json");
     if target.exists() {
-        return None;
+        return Ok(());
     }
-    let from = startup_dir()?;
+    let Some(from) = startup_dir() else { return Ok(()) };
     let source = from.join("config.json");
     if !source.is_file() || from.canonicalize().ok() == dest.canonicalize().ok() {
-        return None;
+        return Ok(());
     }
-    fs::copy(&source, &target).ok().map(|_| from)
+    // Por um temporário: uma cópia pela metade nunca vira o config.json (o presence.mjs usaria ela
+    // e a próxima instalação pularia a cópia, porque o destino já existe)
+    let tmp = dest.join("config.json.tmp");
+    fs::copy(&source, &tmp)
+        .and_then(|_| fs::rename(&tmp, &target))
+        .map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("não deu pra trazer o config.json de {}: {e}", from.display())
+        })
 }
 
 /** Liga ou desliga o início com o Windows para a pasta `dir`. UTF-16 com BOM: um caminho com acento. */
@@ -207,27 +219,35 @@ fn lock_held() -> bool {
     fs::OpenOptions::new().write(true).open(LOCK_PIPE).is_ok()
 }
 
+#[link(name = "kernel32")]
+extern "system" {
+    fn GetNamedPipeServerProcessId(pipe: isize, pid: *mut u32) -> i32;
+}
+
 /**
  * Fecha o Quack Presence aberto (instalado ou de dev): "quit" na trava do presence.mjs, que limpa
- * o card e sai; um presence.mjs de antes desse comando sai pelo PowerShell, pelo caminho do script.
+ * o card e sai. Um presence.mjs de antes desse comando ignora o "quit" e sai pelo taskkill: o
+ * processo é o dono da trava (o servidor do pipe), nunca outro node.
+ * Devolve se havia um aberto, para quem chama reabrir ele se a instalação falhar.
  */
-fn stop_running() {
-    if let Ok(mut pipe) = fs::OpenOptions::new().write(true).open(LOCK_PIPE) {
-        let _ = pipe.write_all(b"quit\n");
-        drop(pipe);
-        if wait_for(|| !lock_held(), Duration::from_secs(5)) {
-            return;
-        }
-    } else {
-        return;
-    }
+fn stop_running() -> bool {
+    use std::os::windows::io::AsRawHandle;
     use std::os::windows::process::CommandExt;
-    let script = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*presence.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }";
-    let _ = Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+    let Ok(mut pipe) = fs::OpenOptions::new().write(true).open(LOCK_PIPE) else { return false };
+    let mut pid = 0u32;
+    // SAFETY: o handle é do pipe aberto acima e vive até o drop; a função só escreve no u32.
+    let got_pid = unsafe { GetNamedPipeServerProcessId(pipe.as_raw_handle() as isize, &mut pid) } != 0;
+    let _ = pipe.write_all(b"quit\n");
+    drop(pipe);
+    if wait_for(|| !lock_held(), Duration::from_secs(5)) || !got_pid || pid == 0 {
+        return true;
+    }
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
         .creation_flags(CREATE_NO_WINDOW)
         .status();
     wait_for(|| !lock_held(), Duration::from_secs(5));
+    true
 }
 
 fn wait_for(done: impl Fn() -> bool, limit: Duration) -> bool {
@@ -346,18 +366,24 @@ fn default_dir() -> PathBuf {
     local.join(PRODUCT)
 }
 
+/** async: o `node --version` e o registro rodam fora da thread da janela */
 #[tauri::command]
-fn setup_info(app: AppHandle) -> Value {
-    let dir = default_dir();
-    json!({
-        "version": app.package_info().version.to_string(),
-        "dir": dir.display().to_string(),
-        "installed": dir.join(BINARY).exists(),
-        "node": node_version(),
-        "nodeMin": format!("{}.{}", NODE_MIN.0, NODE_MIN.1),
-        // Ligado por padrão; desligado só quando já há instalação e o .vbs não existe
-        "startup": startup_link().is_some_and(|p| p.exists()) || !dir.join(BINARY).exists(),
+async fn setup_info(app: AppHandle) -> Value {
+    let version = app.package_info().version.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = default_dir();
+        json!({
+            "version": version,
+            "dir": dir.display().to_string(),
+            "installed": dir.join(BINARY).exists(),
+            "node": node_version(),
+            "nodeMin": format!("{}.{}", NODE_MIN.0, NODE_MIN.1),
+            // Ligado por padrão; desligado só quando já há instalação e o .vbs não existe
+            "startup": startup_link().is_some_and(|p| p.exists()) || !dir.join(BINARY).exists(),
+        })
     })
+    .await
+    .unwrap_or(Value::Null)
 }
 
 #[tauri::command]
@@ -393,21 +419,31 @@ async fn setup_install(app: AppHandle, dir: String, startup: bool, desktop: bool
         let dir = PathBuf::from(dir);
         let shortcut = desktop_shortcut();
         let had_shortcut = shortcut.as_ref().is_some_and(|p| p.exists());
+        // A pasta de onde o aberto roda, lida antes do set_startup reescrever o .vbs
+        let old_dir = startup_dir().filter(|d| d.join("presence.mjs").is_file());
         // O que está aberto sai antes: o NSIS fecharia a bandeja e deixaria o node sem ela
-        stop_running();
-        let installer = std::env::temp_dir().join(format!("Quack-Presence-Install-{}.exe", std::process::id()));
-        let bytes = extract(offset, len)?;
-        install_from(&installer, &bytes, &[], &dir)?;
-        // Antes do set_startup, que reescreve o .vbs para a pasta nova
-        carry_config(&dir);
-        // O NSIS em silêncio sempre faz o atalho da área de trabalho
-        if !desktop && !had_shortcut {
-            if let Some(p) = shortcut {
-                let _ = fs::remove_file(p);
+        let was_running = stop_running();
+        let result = (|| {
+            let installer = std::env::temp_dir().join(format!("Quack-Presence-Install-{}.exe", std::process::id()));
+            let bytes = extract(offset, len)?;
+            install_from(&installer, &bytes, &[], &dir)?;
+            // Antes do set_startup, que reescreve o .vbs para a pasta nova
+            carry_config(&dir)?;
+            // O NSIS em silêncio sempre faz o atalho da área de trabalho
+            if !desktop && !had_shortcut {
+                if let Some(p) = shortcut {
+                    let _ = fs::remove_file(p);
+                }
+            }
+            set_startup(&dir, startup).map(|_| ())
+        })();
+        // Falhou com o Quack Presence fechado por nós: o de antes abre de novo, para o card não sumir
+        if result.is_err() && was_running {
+            if let Some(old) = old_dir {
+                let _ = spawn_node(&old);
             }
         }
-        set_startup(&dir, startup)?;
-        Ok(())
+        result
     })
     .await
     .map_err(|e| e.to_string())?
@@ -439,7 +475,11 @@ fn desktop_shortcut() -> Option<PathBuf> {
     let mut raw: *mut u16 = std::ptr::null_mut();
     // SAFETY: o GUID tem o layout de KNOWNFOLDERID; o texto devolvido termina em zero e é solto com CoTaskMemFree.
     unsafe {
+        // O texto é solto até quando a chamada falha, como a documentação pede
         if SHGetKnownFolderPath(&DESKTOP, 0, 0, &mut raw) != 0 || raw.is_null() {
+            if !raw.is_null() {
+                CoTaskMemFree(raw.cast());
+            }
             return None;
         }
         let mut len = 0;
@@ -539,10 +579,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn node_needs_22_5_for_sqlite() {
+    fn node_needs_sqlite_without_the_flag() {
         assert!(node_ok("v24.12.0"));
-        assert!(node_ok("v22.5.0"));
-        assert!(!node_ok("v22.4.1"));
+        assert!(node_ok("v22.13.0"));
+        assert!(node_ok("v23.4.0"));
+        // node:sqlite ainda pedia --experimental-sqlite nestas
+        assert!(!node_ok("v22.12.0"));
+        assert!(!node_ok("v22.5.0"));
+        assert!(!node_ok("v23.3.0"));
         assert!(!node_ok("v20.18.0"));
         assert!(!node_ok(""));
     }
@@ -552,6 +596,26 @@ mod tests {
         let s = startup_script(Path::new(r"C:\Users\Zé\AppData\Local\Quack Presence"));
         assert!(s.contains(r#"dir = "C:\Users\Zé\AppData\Local\Quack Presence""#), "{s}");
         assert!(s.contains(r#"\presence.mjs"#));
+    }
+
+    /// Manual (fecha o Quack Presence aberto): um node que segura a trava e ignora o "quit", como
+    /// um presence.mjs de antes, tem que sair pelo PID do dono do pipe.
+    #[test]
+    #[ignore]
+    fn an_old_copy_that_ignores_quit_is_stopped_by_its_pipe_pid() {
+        let script = r#"require("net").createServer((s) => s.on("error", () => {})).listen("\\\\?\\pipe\\quack-presence-lock"); setInterval(() => {}, 1000);"#;
+        let mut child = Command::new("node").args(["-e", script]).spawn().unwrap();
+        assert!(wait_for(lock_held, Duration::from_secs(5)), "o falso não pegou a trava");
+        let started = Instant::now();
+        assert!(stop_running());
+        assert!(!lock_held(), "a trava continua presa");
+        // O pipe fecha um instante antes do processo terminar de sair
+        let gone = (0..25).any(|_| {
+            std::thread::sleep(Duration::from_millis(200));
+            child.try_wait().unwrap().is_some()
+        });
+        assert!(gone, "o falso continua vivo");
+        assert!(started.elapsed() >= Duration::from_secs(5), "saiu pelo quit, não pelo taskkill");
     }
 
     #[test]

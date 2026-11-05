@@ -7,7 +7,7 @@ entrar no servidor.
 ## Instalar
 
 Baixe o [Quack-Presence-Setup.exe](https://github.com/EnderexDev/Quack-Presence/releases/latest/download/Quack-Presence-Setup.exe)
-e abra. Precisa do [Node.js](https://nodejs.org) 22.5 ou mais novo.
+e abra. Precisa do [Node.js](https://nodejs.org) 22.13 ou mais novo.
 
 Depois disso ele se atualiza sozinho: procura versão nova ao abrir e a cada 6 horas, instala e
 volta em poucos segundos (o card some do Discord nesse meio tempo). O painel da bandeja tem o
