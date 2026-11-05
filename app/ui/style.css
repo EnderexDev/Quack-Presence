@@ -101,7 +101,6 @@ select.field-input { appearance: none; cursor: pointer; padding-right: 28px; bac
 input.field-input[type="number"] { width: 84px; text-align: right; font-family: var(--mono); }
 input.field-input[type="number"]::-webkit-inner-spin-button { opacity: .4; }
 
-.brandtag { font-family: var(--display); font-size: 12px; letter-spacing: -0.01em; text-transform: uppercase; color: var(--line); background: var(--brand-400); border-radius: 8px; padding: 5px 10px; }
 .bar { margin-top: 9px; height: 6px; width: 84px; border-radius: 4px; background: linear-gradient(90deg, var(--brand-400), #ff8a0f); }
 .card { background: var(--ink-800); border-radius: 18px; padding: 14px; }
 .card > .label { display: block; margin-bottom: 8px; }
@@ -142,8 +141,9 @@ body.traybody { background: transparent; overflow: hidden; }
    Fredoka com o degradê ouro, direto no painel, sem caixa própria */
 .word { font-family: var(--logo); font-weight: 700; line-height: 1; background: linear-gradient(var(--word-1), var(--word-2) 45%, var(--word-3));
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .7)); }
-.brand { display: flex; align-items: center; flex: none; }
-.brand .mark { flex: none; background: url(logo.svg) center / contain no-repeat; }
+.brand { display: flex; align-items: center; gap: 9px; flex: none; }
+.brand .mark { width: 30px; height: 30px; flex: none; background: url(logo.svg) center / contain no-repeat; }
+.brand .word { font-size: 23px; padding-bottom: 2px; }
 .trayhead { gap: 12px; height: 58px; padding: 0 4px; }
 .trayhead .mark { width: 46px; height: 46px; }
 .trayhead .who { display: flex; flex-direction: column; gap: 5px; min-width: 0; }

@@ -113,7 +113,7 @@ function render() {
   root.append(h("div", { class: "scroll" },
     h("div", { class: "head" },
       h("div", { class: "grow" },
-        h("span", { class: "brandtag" }, "Quack Presence"),
+        h("span", { class: "brand" }, h("span", { class: "mark" }), h("span", { class: "word" }, "Quack Presence")),
         h("h1", { class: "display", style: "margin-top:12px" }, "Configurações"),
         h("div", { class: "bar" })),
       pill()),
