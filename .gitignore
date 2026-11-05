@@ -3,3 +3,5 @@ presence.pid
 presence.status.json
 *.tmp
 app/src-tauri/target/
+app/node_modules/
+update.log

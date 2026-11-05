@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "setup",
+  "description": "A janela do instalador (setup.rs): só os comandos dela e arrastar pela barra",
+  "windows": ["setup"],
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
+}

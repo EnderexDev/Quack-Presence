@@ -6,6 +6,8 @@
 // stdin quer dizer que o Node morreu, e então este processo sai junto.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod setup;
+
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::io::{Read, Write};
@@ -25,6 +27,10 @@ const TRAY_GAP: f64 = 10.0;
 /** O mesmo ritmo do tray.ps1: o presence.mjs conta com o input a cada ~2 s para o "longe do PC" */
 const POLL_EVERY: Duration = Duration::from_millis(2000);
 
+/** A primeira procura por versão nova, depois a cada 6 horas, como no Quackify */
+const FIRST_CHECK: Duration = Duration::from_secs(60);
+const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+
 const ICON_OK: &[u8] = include_bytes!("../tray/ok.png");
 const ICON_PARADO: &[u8] = include_bytes!("../tray/parado.png");
 const ICON_ERRO: &[u8] = include_bytes!("../tray/erro.png");
@@ -38,6 +44,12 @@ struct Shared {
     tray_hidden_at: Mutex<Option<Instant>>,
     icon: Mutex<&'static str>,
     stdout: Mutex<std::io::Stdout>,
+    /** A cópia instalada, que se atualiza; um build de dev nunca procura versão */
+    installed: bool,
+    /** A versão nova achada no GitHub, ainda não instalada */
+    update: Mutex<Option<String>>,
+    /** Uma atualização já entregue à cópia na pasta temp: não começa outra */
+    updating: Mutex<bool>,
 }
 
 fn send(app: &AppHandle, line: &str) {
@@ -55,11 +67,6 @@ fn read_json(path: &Path) -> Option<Value> {
 
 fn now_ms() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
-}
-
-fn startup_link() -> Option<PathBuf> {
-    let appdata = std::env::var_os("APPDATA")?;
-    Some(PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Startup\quack-presence.vbs"))
 }
 
 /** Nome do tipo de atividade do Discord, como o card mostra */
@@ -169,7 +176,7 @@ fn build_view(dir: &Path) -> Value {
         .filter(Value::is_object);
     view["configOk"] = json!(config.is_some());
     view["config"] = config.unwrap_or(Value::Null);
-    view["iniciarComWindows"] = json!(startup_link().is_some_and(|p| p.exists()));
+    view["iniciarComWindows"] = json!(setup::startup_link().is_some_and(|p| p.exists()));
     // Os projetos do T3 que o presence.mjs leu, para a lista de projetos das configurações
     view["projetos"] = status
         .as_ref()
@@ -216,6 +223,20 @@ fn get_view(app: AppHandle) -> Value {
     app.state::<Shared>().view.lock().unwrap().clone()
 }
 
+/** O que só este processo sabe: a versão, se é a cópia instalada e a versão nova achada */
+fn add_app_state(app: &AppHandle, view: &mut Value) {
+    let shared = app.state::<Shared>();
+    view["versao"] = json!(app.package_info().version.to_string());
+    view["instalado"] = json!(shared.installed);
+    view["atualizacao"] = json!(*shared.update.lock().unwrap());
+    view["atualizando"] = json!(*shared.updating.lock().unwrap());
+}
+
+/** A chave atualizarSozinho do config.json: ligada quando falta */
+fn auto_update_on(view: &Value) -> bool {
+    view["config"]["atualizarSozinho"].as_bool() != Some(false)
+}
+
 /** Um pedaço do config.json: quem grava é o presence.mjs, trocando só os valores no texto */
 #[tauri::command]
 fn send_config(app: AppHandle, patch: Map<String, Value>) {
@@ -229,16 +250,86 @@ fn reconnect(app: AppHandle) {
     refresh_soon(app);
 }
 
+/** O .vbs escrito para a pasta deste presence.mjs: a cópia instalada ou o checkout de dev */
 #[tauri::command]
 fn set_startup(app: AppHandle, enabled: bool) -> Result<bool, String> {
-    let link = startup_link().ok_or("pasta Inicializar não encontrada")?;
-    if enabled && !link.exists() {
-        let dir = &app.state::<Shared>().dir;
-        fs::copy(dir.join("start-hidden.vbs"), &link).map_err(|e| e.to_string())?;
-    } else if !enabled && link.exists() {
-        fs::remove_file(&link).map_err(|e| e.to_string())?;
+    setup::set_startup(&app.state::<Shared>().dir, enabled)
+}
+
+/** O botão Atualizar do painel: instala a versão achada agora, com o automático desligado */
+#[tauri::command]
+fn update_now(app: AppHandle) -> Result<(), String> {
+    if app.state::<Shared>().update.lock().unwrap().is_none() {
+        return Err("Nenhuma versão nova achada".into());
     }
-    Ok(link.exists())
+    apply_update(&app)
+}
+
+// ---------- atualização ----------
+
+/** Procura versão nova a cada 6 horas e, com o automático ligado, instala assim que acha */
+fn update_loop(app: AppHandle) {
+    if !app.state::<Shared>().installed {
+        return;
+    }
+    thread::sleep(FIRST_CHECK);
+    loop {
+        check_update(&app);
+        let since = Instant::now();
+        while since.elapsed() < CHECK_EVERY {
+            // Ligar o automático com uma versão já achada instala sem esperar a próxima procura
+            maybe_apply(&app);
+            thread::sleep(Duration::from_secs(20));
+        }
+    }
+}
+
+fn check_update(app: &AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    let found = tauri::async_runtime::block_on(async {
+        let updater = app.updater().map_err(|e| e.to_string())?;
+        updater.check().await.map(|u| u.map(|u| u.version)).map_err(|e| e.to_string())
+    });
+    match found {
+        Ok(version) => *app.state::<Shared>().update.lock().unwrap() = version,
+        // Sem internet ou GitHub fora: tenta de novo na próxima procura, a versão achada antes fica
+        Err(e) => eprintln!("procura de atualização falhou: {e}"),
+    }
+    refresh(app);
+}
+
+fn maybe_apply(app: &AppHandle) {
+    let shared = app.state::<Shared>();
+    let ready = shared.update.lock().unwrap().is_some() && auto_update_on(&shared.view.lock().unwrap());
+    if ready {
+        if let Err(e) = apply_update(app) {
+            eprintln!("a atualização não começou: {e}");
+        }
+    }
+}
+
+/**
+ * Entrega a atualização à cópia na pasta temp e sai: o presence.mjs recebe "quit" (limpa o card e
+ * solta a trava), a cópia instala e o NSIS abre o Quack Presence de novo.
+ */
+fn apply_update(app: &AppHandle) -> Result<(), String> {
+    let shared = app.state::<Shared>();
+    {
+        let mut updating = shared.updating.lock().unwrap();
+        if *updating {
+            return Ok(());
+        }
+        *updating = true;
+    }
+    if let Err(e) = setup::hand_off_update(&shared.dir) {
+        *shared.updating.lock().unwrap() = false;
+        return Err(e);
+    }
+    send(app, "quit");
+    // O fim do stdin (o node saiu) já fecha este processo; o tempo é o teto
+    thread::sleep(Duration::from_secs(3));
+    app.exit(0);
+    Ok(())
 }
 
 /** config.json ou presence.log no programa padrão do Windows, como o Invoke-Item fazia */
@@ -301,7 +392,8 @@ fn refresh_soon(app: AppHandle) {
 
 fn refresh(app: &AppHandle) {
     let shared = app.state::<Shared>();
-    let view = build_view(&shared.dir);
+    let mut view = build_view(&shared.dir);
+    add_app_state(app, &mut view);
     let nivel = match view["nivel"].as_str() {
         Some("ok") => "ok",
         Some("parado") => "parado",
@@ -540,6 +632,9 @@ mod tests {
         for call in [r#""quit""#, r#""reconnect""#, r#""show_settings""#, r#"which: "config""#, r#"which: "log""#, r#""send_config""#] {
             assert!(tray.contains(call), "painel sem {call}");
         }
+        for call in [r#""update_now""#, "atualizarSozinho"] {
+            assert!(tray.contains(call), "painel sem {call}");
+        }
         for key in ["modoAtivo", "mostrar", "tipo", "quandoOcioso", "ociosoMinutos", "ausenteMinutos", "intervaloSegundos", "seguirUltimaMensagem", "set_startup"] {
             assert!(settings.contains(key), "configurações sem {key}");
         }
@@ -548,8 +643,20 @@ mod tests {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if let Some(mode) = setup::mode(&args) {
+        return setup::run(tauri::generate_context!(), mode);
+    }
+    // Sem --dir: o atalho do Iniciar, o fim de uma atualização ou um clique no exe. Abre o
+    // presence.mjs, que abre este exe de novo como a bandeja.
+    if !args.iter().any(|a| a == "--dir") {
+        return setup::launch();
+    }
+    setup::clean_up();
     let dir = dir_from_args(&args);
     let shared = Shared {
+        installed: setup::is_installed(&dir),
+        update: Mutex::new(None),
+        updating: Mutex::new(false),
         dir: dir.clone(),
         // Já preenchido: as janelas carregam antes do primeiro ciclo do poll e pedem o estado na hora
         view: Mutex::new(build_view(&dir)),
@@ -559,8 +666,9 @@ fn main() {
         stdout: Mutex::new(std::io::stdout()),
     };
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(shared)
-        .invoke_handler(tauri::generate_handler![get_view, send_config, reconnect, set_startup, open_file, show_settings, tray_fit, quit])
+        .invoke_handler(tauri::generate_handler![get_view, send_config, reconnect, set_startup, update_now, open_file, show_settings, tray_fit, quit])
         .setup(move |app| {
             // Sem menu nativo, como no Quack: o Windows abre ele sob o cursor, por cima da barra
             // de tarefas, e um jogo em tela cheia o cobre. Sair fica no painel.
@@ -588,6 +696,8 @@ fn main() {
             thread::spawn(move || poll_loop(handle));
             let handle = app.handle().clone();
             thread::spawn(move || parent_watch(handle));
+            let handle = app.handle().clone();
+            thread::spawn(move || update_loop(handle));
             if args.iter().any(|a| a == "--settings") {
                 show_settings_window(app.handle());
             }

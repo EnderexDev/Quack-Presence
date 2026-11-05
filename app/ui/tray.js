@@ -39,6 +39,35 @@ function render() {
         h("button", { class: name === active ? "on" : "", onclick: () => setMode(name) }, name))));
   }
   modes.classList.toggle("hidden", !names.length);
+  renderUpdate();
+}
+
+/** A versão e a atualização: a cópia instalada procura no GitHub; a de dev só mostra a versão */
+function renderUpdate() {
+  const sozinho = view.config?.atualizarSozinho !== false;
+  const auto = document.getElementById("updauto");
+  auto.className = sozinho ? "tog" : "tog off";
+  auto.setAttribute("aria-checked", String(sozinho));
+  auto.classList.toggle("hidden", !view.instalado || !view.configOk);
+  const ver = document.getElementById("updver");
+  const nova = view.atualizacao;
+  ver.className = nova ? "sub new" : "sub";
+  document.getElementById("updtxt").textContent = view.instalado ? "Atualizar sozinho" : "Cópia de desenvolvimento";
+  ver.textContent = view.atualizando
+    ? `Atualizando para a ${nova}, volta em alguns segundos`
+    : nova
+      ? `Versão ${nova} disponível`
+      : view.instalado
+        ? `Versão ${view.versao ?? ""}`
+        : `Versão ${view.versao ?? ""}, não se atualiza`;
+  // Com o automático ligado a versão nova entra sozinha; o botão é para quem desligou
+  document.getElementById("updnow").classList.toggle("hidden", !nova || sozinho || view.atualizando);
+}
+
+async function setAutoUpdate(on) {
+  view = { ...view, config: { ...view.config, atualizarSozinho: on } };
+  render();
+  await call("send_config", { patch: { atualizarSozinho: on } });
 }
 
 /** Liga ou desliga o card sem fechar o programa; vale até ligar de novo, mesmo depois de reiniciar */
@@ -66,6 +95,8 @@ function fit() {
 new ResizeObserver(fit).observe(panel);
 
 document.getElementById("ativo").addEventListener("click", () => setActive(view.config?.ativo === false));
+document.getElementById("updauto").addEventListener("click", () => setAutoUpdate(view.config?.atualizarSozinho === false));
+document.getElementById("updnow").addEventListener("click", () => call("update_now"));
 document.getElementById("settings").addEventListener("click", () => call("show_settings"));
 document.getElementById("quit").addEventListener("click", () => call("quit"));
 document.getElementById("reconnect").addEventListener("click", () => call("reconnect"));

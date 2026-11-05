@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Instalar o Quack Presence</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="setup.js"></script>
+</head>
+<body class="setupbody">
+  <div class="setup" id="root">
+    <header class="setupbar" data-tauri-drag-region>
+      <span class="label" data-tauri-drag-region>Instalar o Quack Presence</span>
+      <button class="setupclose" id="close" aria-label="Fechar">✕</button>
+    </header>
+    <main class="setupmain">
+      <div class="brand setupbrand">
+        <span class="mark" id="mark"></span>
+        <span class="word">Quack Presence</span>
+      </div>
+      <p class="setupline" id="line">Carregando...</p>
+      <div class="setupprogress hidden" id="progress"><i></i></div>
+      <div class="card setupopts" id="opts">
+        <div class="field">
+          <div class="grow"><span>Pasta</span><span class="hint mono setuppath" id="dir"></span></div>
+          <button class="btn dark chunk press" id="pick">Trocar</button>
+        </div>
+        <div class="field">
+          <div class="grow"><span>Iniciar com o Windows</span><span class="hint">Abre escondido, só o ícone na bandeja</span></div>
+          <button class="tog" id="startup" role="switch" aria-label="Iniciar com o Windows"></button>
+        </div>
+        <div class="field">
+          <div class="grow"><span>Atalho na área de trabalho</span></div>
+          <button class="tog off" id="desktop" role="switch" aria-label="Atalho na área de trabalho"></button>
+        </div>
+      </div>
+      <div class="setupactions">
+        <button class="btn yellow chunk-bright press" id="install">Instalar</button>
+        <button class="btn yellow chunk-bright press hidden" id="open">Abrir o Quack Presence</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

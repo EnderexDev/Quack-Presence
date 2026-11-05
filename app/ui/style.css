@@ -151,9 +151,36 @@ body.traybody { background: transparent; overflow: hidden; }
 .trayhead .who span:last-child { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--ink-400); text-transform: uppercase; }
 .state { display: flex; align-items: center; gap: 10px; border-radius: 12px; background: var(--ink-900); padding: 9px 12px; color: var(--ink-200); font-weight: 600; font-size: 12.5px; }
 .state #estado { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upd .grow { display: flex; flex-direction: column; gap: 2px; }
+.upd .sub { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; color: var(--ink-400); }
+.upd .sub.new { color: var(--brand-400); }
+.upd .btn { padding: 5px 10px; }
 .trayfoot { display: flex; flex-direction: column; gap: 8px; }
 .trayfoot .row { gap: 8px; }
 .trayfoot .row .btn { flex: 1 1 auto; min-width: 0; }
 .trayfoot .row .btn.yellow { flex-grow: 3; }
+/* ---------- Instalador (setup.html) ---------- */
+.setup { height: 100%; display: flex; flex-direction: column; border: 3px solid var(--line); }
+.setupbar { display: flex; align-items: center; justify-content: space-between; height: 38px; padding: 0 8px 0 14px; background: var(--ink-900); border-bottom: 3px solid var(--line); }
+.setupclose { width: 26px; height: 26px; border-radius: 8px; color: var(--ink-400); cursor: pointer; font-size: 12px; }
+.setupclose:hover { background: var(--ink-800); color: var(--brand-400); }
+.setupmain { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 22px 22px 20px; }
+.setupbrand { flex-direction: column; gap: 10px; }
+.setupbrand .mark { width: 72px; height: 72px; }
+.setupbrand .mark.busy { animation: bob 1.1s var(--ease) infinite; }
+.setupbrand .word { font-size: 30px; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.setupline { margin: 0; text-align: center; color: var(--ink-300); font-size: 12.5px; line-height: 1.5; max-width: 360px; min-height: 38px; }
+.setupline.bad { color: #ff8b84; }
+.setupopts { width: 100%; padding: 4px 14px; }
+.setupopts .field { justify-content: space-between; }
+.setupopts .grow { display: flex; flex-direction: column; }
+.setuppath { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setupactions { margin-top: auto; display: flex; gap: 8px; }
+.setupactions .btn { font-size: 12px; padding: 10px 22px; }
+.setupprogress { width: 70%; height: 10px; border-radius: 999px; border: 3px solid var(--line); background: var(--ink-900); overflow: hidden; position: relative; }
+.setupprogress i { position: absolute; top: 0; bottom: 0; width: 35%; border-radius: 999px; background: linear-gradient(90deg, var(--brand-400), #ff8a0f); animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { 0% { left: -35%; } 100% { left: 100%; } }
+
 /* Nome de arquivo em mono e minúsculo, como os caminhos no Quack */
 .btn.file { font-family: var(--mono); font-size: 11px; letter-spacing: 0; text-transform: none; font-weight: 600; }

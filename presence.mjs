@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(DIR, "config.json");
+const DEFAULT_CONFIG_PATH = path.join(DIR, "config.default.json");
 const LOG_PATH = path.join(DIR, "presence.log");
 const STATUS_PATH = path.join(DIR, "presence.status.json");
 const T3_HOME = process.env.T3CODE_HOME || path.join(os.homedir(), ".t3");
@@ -851,12 +852,17 @@ let wakePending = false;
 // compilado, o tray.ps1 faz o mesmo em WinForms. Os dois falam por linhas no stdout deles, e o
 // app sai quando o stdin fecha, o que acontece quando este processo morre de qualquer jeito.
 // Nos testes (pipe falso) ou com T3P_NO_TRAY, não abre.
-const TRAY_EXE = path.join(DIR, "app", "src-tauri", "target", "release", "quack-presence-tray.exe");
+// Instalado, o exe fica ao lado deste arquivo; no checkout de dev, onde o cargo build deixa.
+const TRAY_EXE =
+  [
+    path.join(DIR, "quack-presence-tray.exe"),
+    path.join(DIR, "app", "src-tauri", "target", "release", "quack-presence-tray.exe"),
+  ].find((p) => fs.existsSync(p)) ?? "";
 
 function startTray() {
   if (process.env.T3P_IPC_PIPE || process.env.T3P_NO_TRAY) return;
   let cmd, args;
-  if (fs.existsSync(TRAY_EXE)) {
+  if (TRAY_EXE) {
     [cmd, args] = [TRAY_EXE, ["--dir", DIR]];
   } else {
     const ps = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-WindowStyle", "Hidden"];
@@ -883,16 +889,7 @@ async function onTrayCommand(line) {
       if (away === wasAway) return;
       wasAway = away;
     } else if (cmd === "quit") {
-      log("saindo pela bandeja");
-      // O Discord limpa o card quando a conexão cai; mandar null antes só deixa mais rápido.
-      for (const ch of Object.values(channels)) {
-        if (ch.ipc?.ready) await ch.ipc.setActivity(null);
-        closeChannel(ch);
-      }
-      try {
-        fs.unlinkSync(STATUS_PATH);
-      } catch {}
-      process.exit(0);
+      await quit("pela bandeja");
     } else if (cmd === "reconnect") {
       reconnectWanted = true;
     } else if (cmd === "config") {
@@ -905,21 +902,61 @@ async function onTrayCommand(line) {
   }
 }
 
+/** Limpa o card e sai: o Sair do painel, uma atualização ou o instalador (pela trava) */
+async function quit(why) {
+  log("saindo", why);
+  // O Discord limpa o card quando a conexão cai; mandar null antes só deixa mais rápido.
+  for (const ch of Object.values(channels)) {
+    try {
+      if (ch.ipc?.ready) await ch.ipc.setActivity(null);
+    } catch {}
+    closeChannel(ch);
+  }
+  try {
+    fs.unlinkSync(STATUS_PATH);
+  } catch {}
+  process.exit(0);
+}
+
+/**
+ * A trava de instância única: o Windows solta o pipe quando o processo morre, sem arquivo velho.
+ * Quem se conecta e manda "quit" fecha este processo (o instalador, antes de trocar os arquivos).
+ * Ocupada, tenta de novo por uns segundos: no fim de uma atualização o processo velho ainda pode
+ * estar saindo.
+ */
+async function takeLock(name) {
+  for (let attempt = 0; ; attempt++) {
+    const locked = await new Promise((resolve) => {
+      const lock = net.createServer((s) => {
+        s.on("data", (d) => {
+          if (d.toString().trim() === "quit") quit("pelo instalador");
+        });
+        s.on("error", () => {});
+        s.setTimeout(2000, () => s.destroy());
+      });
+      lock.once("error", () => resolve(false));
+      lock.listen(`\\\\?\\pipe\\${name}`, () => resolve(true));
+    });
+    if (locked || attempt >= 5) return locked;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
 async function main() {
+  // A instalação traz só o config.default.json: o config.json é do usuário, e atualização nenhuma
+  // passa por cima dele.
+  if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(DEFAULT_CONFIG_PATH)) {
+    fs.copyFileSync(DEFAULT_CONFIG_PATH, CONFIG_PATH);
+  }
   if (ARGS.has("--once") || ARGS.has("--dry")) {
     await tick();
     if (ARGS.has("--once")) await new Promise((r) => setTimeout(r, 1500));
     for (const ch of Object.values(channels)) closeChannel(ch);
     return;
   }
-  // Trava de instância única: o Windows solta o pipe quando o processo morre, sem arquivo velho.
   // Com o pipe falso dos testes a trava é outra, para o teste rodar junto com o programa em uso.
   const lockName = process.env.T3P_IPC_PIPE ? `quack-presence-lock-test-${process.pid}` : "quack-presence-lock";
-  const locked = await new Promise((resolve) => {
-    const lock = net.createServer((s) => s.destroy());
-    lock.once("error", () => resolve(false));
-    lock.listen(`\\\\?\\pipe\\${lockName}`, () => resolve(true));
-  });
+  const locked = await takeLock(lockName);
   if (!locked) {
     console.log("já está rodando");
     return;
