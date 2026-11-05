@@ -170,6 +170,13 @@ fn build_view(dir: &Path) -> Value {
     view["configOk"] = json!(config.is_some());
     view["config"] = config.unwrap_or(Value::Null);
     view["iniciarComWindows"] = json!(startup_link().is_some_and(|p| p.exists()));
+    // Os projetos do T3 que o presence.mjs leu, para a lista de projetos das configurações
+    view["projetos"] = status
+        .as_ref()
+        .and_then(|s| s.get("projetos"))
+        .filter(|p| p.is_array())
+        .cloned()
+        .unwrap_or(json!([]));
     view
 }
 

@@ -50,16 +50,57 @@ function loadConfig() {
   return config;
 }
 
-// Muda campos do config pela janela da bandeja. Troca só o valor no texto para manter o arquivo
-// como foi escrito à mão; se o resultado não bater com o esperado, regrava o JSON inteiro.
-function patchConfig(patch) {
-  const text = fs.readFileSync(CONFIG_PATH, "utf8");
+// Leitura de posições no texto do JSON, para o patchText trocar um valor sem mexer no resto.
+const skipWs = (t, i) => {
+  while (i < t.length && /\s/.test(t[i])) i++;
+  return i;
+};
+function scanString(t, i) {
+  for (i++; i < t.length && t[i] !== '"'; i++) if (t[i] === "\\") i++;
+  return i + 1;
+}
+function scanValue(t, i) {
+  if (t[i] === '"') return scanString(t, i);
+  if (t[i] !== "{" && t[i] !== "[") return i + (/^[^,}\]\s]*/.exec(t.slice(i))?.[0].length ?? 0);
+  let depth = 0;
+  for (; i < t.length; i++) {
+    if (t[i] === '"') i = scanString(t, i) - 1;
+    else if (t[i] === "{" || t[i] === "[") depth++;
+    else if ((t[i] === "}" || t[i] === "]") && --depth === 0) return i + 1;
+  }
+  return t.length;
+}
+/** Os membros do objeto que abre em t[open]: chave -> [início da chave, início do valor, fim do valor] */
+function members(t, open) {
+  const out = new Map();
+  let i = skipWs(t, open + 1);
+  while (i < t.length && t[i] === '"') {
+    const keyEnd = scanString(t, i);
+    const valueStart = skipWs(t, skipWs(t, keyEnd) + 1);
+    const valueEnd = scanValue(t, valueStart);
+    out.set(JSON.parse(t.slice(i, keyEnd)), [i, valueStart, valueEnd]);
+    i = skipWs(t, valueEnd);
+    if (t[i] === ",") i = skipWs(t, i + 1);
+  }
+  return { members: out, close: i };
+}
+/** Um objeto numa linha só, como os do config: { "nome": "X", "ignorar": true } */
+function inline(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return JSON.stringify(value);
+  const parts = Object.entries(value).map(([k, v]) => `${JSON.stringify(k)}: ${inline(v)}`);
+  return parts.length ? `{ ${parts.join(", ")} }` : "{}";
+}
+
+// Aplica um pedaço do config ao texto do arquivo, trocando só os valores (e inserindo a chave que
+// faltar no objeto dela) para manter o arquivo como foi escrito à mão. Se o resultado não bater
+// com o esperado, devolve o JSON inteiro regravado.
+function patchText(text, patch) {
   const want = JSON.parse(text);
   const leaves = [];
   const walk = (obj, into, keys) => {
     for (const [k, v] of Object.entries(obj)) {
       if (v && typeof v === "object" && !Array.isArray(v)) {
-        if (!into[k] || typeof into[k] !== "object") into[k] = {};
+        if (!into[k] || typeof into[k] !== "object" || Array.isArray(into[k])) into[k] = {};
         walk(v, into[k], [...keys, k]);
       } else {
         into[k] = v;
@@ -71,21 +112,48 @@ function patchConfig(patch) {
 
   let out = text;
   for (const [keys, value] of leaves) {
-    let from = 0;
-    for (const k of keys.slice(0, -1)) from = out.indexOf(JSON.stringify(k), from);
-    if (from < 0) break;
-    const key = JSON.stringify(keys.at(-1)).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`(${key}\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*"|-?[\\d.eE+-]+|true|false|null)`, "g");
-    re.lastIndex = from;
-    const m = re.exec(out);
-    if (!m) break;
-    out = out.slice(0, m.index) + m[1] + JSON.stringify(value) + out.slice(m.index + m[0].length);
+    let open = skipWs(out, 0);
+    if (out[open] !== "{") break;
+    for (let depth = 0; depth < keys.length; depth++) {
+      const { members: found, close } = members(out, open);
+      const hit = found.get(keys[depth]);
+      const last = depth === keys.length - 1;
+      if (hit && (last || out[hit[1]] !== "{")) {
+        // A chave existe: troca o valor (um objeto no meio do caminho que não é objeto vai inteiro)
+        const sub = last ? value : keys.slice(depth + 1).reduceRight((v, k) => ({ [k]: v }), value);
+        out = out.slice(0, hit[1]) + (last ? JSON.stringify(sub) : inline(sub)) + out.slice(hit[2]);
+        break;
+      }
+      if (hit) {
+        open = hit[1];
+        continue;
+      }
+      // A chave falta: entra no fim do objeto, na linha própria se os irmãos estão em linhas próprias
+      const sub = keys.slice(depth + 1).reduceRight((v, k) => ({ [k]: v }), value);
+      const member = `${JSON.stringify(keys[depth])}: ${inline(sub)}`;
+      const prev = [...found.values()].at(-1);
+      if (!prev) {
+        out = out.slice(0, open) + `{ ${member} }` + out.slice(close + 1);
+        break;
+      }
+      const lineStart = out.lastIndexOf("\n", prev[0]) + 1;
+      const indent = out.slice(lineStart, prev[0]);
+      const sep = /^[ \t]*$/.test(indent) ? `,\n${indent}` : ", ";
+      out = out.slice(0, prev[2]) + sep + member + out.slice(prev[2]);
+      break;
+    }
   }
   let same = false;
   try {
     same = isDeepStrictEqual(JSON.parse(out), want);
   } catch {}
-  if (!same) out = JSON.stringify(want, null, 2) + "\n";
+  return same ? out : JSON.stringify(want, null, 2) + "\n";
+}
+
+// Muda campos do config pela janela da bandeja.
+function patchConfig(patch) {
+  const text = fs.readFileSync(CONFIG_PATH, "utf8");
+  const out = patchText(text, patch);
   if (out === text) return;
   fs.writeFileSync(CONFIG_PATH + ".tmp", out);
   fs.renameSync(CONFIG_PATH + ".tmp", CONFIG_PATH);
@@ -360,6 +428,27 @@ function readState(cfg) {
   return { idle, focus, focusItem, last, agents: activeRuns.length, blockStart };
 }
 
+// Os projetos do T3, do usado por último ao mais antigo, para a janela de configurações listar.
+// Custa uns 20 ms: relê a cada minuto. Uma falha mantém a lista anterior e não afeta o card.
+let projectsAt = 0;
+function listProjects() {
+  if (Date.now() - projectsAt < 60_000) return;
+  projectsAt = Date.now();
+  try {
+    status.projetos = openDb()
+      .prepare(
+        `SELECT p.title FROM projection_projects p
+        LEFT JOIN orchestration_v2_projection_threads t ON t.project_id = p.project_id
+        LEFT JOIN orchestration_v2_projection_runs r ON r.thread_id = t.thread_id
+        WHERE p.deleted_at IS NULL GROUP BY p.project_id ORDER BY MAX(r.requested_at) DESC, p.title`,
+      )
+      .all()
+      .map((p) => p.title);
+  } catch (e) {
+    log("falha listando os projetos do T3:", e.message);
+  }
+}
+
 // Longe do PC: a bandeja manda "input <ms>" (tempo desde o último teclado ou mouse) a cada 2 s.
 // Sem notícia dela há 30 s (bandeja fechou, --dry), não dá para saber: conta como presente.
 // T3P_IDLE_MS fixa o valor nos testes, que rodam sem bandeja.
@@ -452,7 +541,8 @@ function buildActivity(cfg, state) {
 
   if (show.timer !== false && state.blockStart && !state.idle) activity.timestamps = { start: state.blockStart };
 
-  const img = { ...(cfg.imagem || {}), ...(projCfg.imagem ? { grande: projCfg.imagem } : {}) };
+  // A imagem do projeto entrega o projeto: no privado, fica a padrão.
+  const img = { ...(cfg.imagem || {}), ...(projCfg.imagem && !privado ? { grande: projCfg.imagem } : {}) };
   const assets = {};
   if (img.grande) assets.large_image = img.grande;
   if (img.grande && img.textoGrande) assets.large_text = clamp(fill(img.textoGrande, values));
@@ -635,7 +725,7 @@ class DiscordIpc {
 const channels = { t3: { ipc: null, lastSent: undefined }, roblox: { ipc: null, lastSent: undefined } };
 let reconnectWanted = false;
 // O que a bandeja mostra: lido de presence.status.json a cada poucos segundos.
-const status = { t3: false, discord: false, app: "", card: null, roblox: null, erro: "", pausado: false };
+const status = { t3: false, discord: false, app: "", card: null, roblox: null, erro: "", pausado: false, projetos: [] };
 
 function closeChannel(ch) {
   ch.ipc?.close();
@@ -689,6 +779,7 @@ async function tick() {
   const pausado = cfg.ativo === false;
   if (pausado !== status.pausado) log(pausado ? "desligado pela bandeja" : "ligado pela bandeja");
   status.pausado = pausado;
+  if (status.t3) listProjects();
   if (status.t3 && !pausado) {
     try {
       activity = buildActivity(cfg, { ...readState(cfg), awayMs: awayMs(cfg) });
@@ -859,4 +950,6 @@ async function main() {
   }
 }
 
-main();
+// Os testes importam o arquivo para chamar o patchText sem abrir o programa.
+export { patchText };
+if (!process.env.T3P_IMPORT) main();

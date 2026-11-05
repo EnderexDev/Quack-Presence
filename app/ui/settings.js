@@ -13,11 +13,14 @@ const CAMPOS = [
 ];
 const TIPOS = ["auto", "jogando", "assistindo", "ouvindo", "competindo"];
 const NOME_TIPO = { auto: "Jogando", jogando: "Jogando", assistindo: "Assistindo", ouvindo: "Ouvindo", competindo: "Competindo" };
+const PROJETO = [["mostrar", "Mostrar"], ["privado", "Privado"], ["esconder", "Esconder"]];
 const PILL = { ok: ["live", "No Discord"], parado: ["", "Sem card"], erro: ["bad", "Fora"] };
 
 let view = {};
 /** O formulário em edição; recarregado do config.json a cada vez que a janela abre */
 let draft = null;
+/** Os projetos como estão no config.json, com o que esta janela já salvou (o view chega depois) */
+let saved = {};
 
 function num(value, fallback, min, max) {
   const n = value === null || value === "" ? NaN : Number(value);
@@ -26,6 +29,7 @@ function num(value, fallback, min, max) {
 
 function loadDraft() {
   const cfg = view.config ?? {};
+  saved = structuredClone(cfg.projetos ?? {});
   const mostrar = {};
   for (const [key, , padrao] of CAMPOS) mostrar[key] = cfg.mostrar?.[key] ?? padrao;
   draft = {
@@ -38,7 +42,37 @@ function loadDraft() {
     intervaloSegundos: num(cfg.intervaloSegundos, 5, 3, 3600),
     seguirUltimaMensagem: cfg.seguirUltimaMensagem !== false,
     iniciar: Boolean(view.iniciarComWindows),
+    projetos: Object.fromEntries(projectNames().map((nome) => [nome, projectState(nome)])),
   };
+}
+
+/** Os projetos do T3 e os do config.json escondidos ou privados (um que saiu do T3 ainda volta) */
+function projectNames() {
+  const cfg = view.config?.projetos ?? {};
+  const marked = Object.keys(cfg).filter((nome) => cfg[nome]?.ignorar === true || cfg[nome]?.privado === true);
+  return [...new Set([...(Array.isArray(view.projetos) ? view.projetos : []), ...marked])];
+}
+
+/** Como o presence.mjs trata o projeto: ignorar vence privado */
+function projectState(nome) {
+  const p = view.config?.projetos?.[nome] ?? {};
+  return p.ignorar === true ? "esconder" : p.privado === true ? "privado" : "mostrar";
+}
+
+/** Só as chaves que mudaram, para o config.json não ganhar "false" em todo projeto */
+function projectPatch() {
+  const patch = {};
+  for (const [nome, state] of Object.entries(draft.projetos)) {
+    const p = saved[nome] ?? {};
+    const ignorar = state === "esconder";
+    // Esconder não mexe no privado
+    const privado = state === "esconder" ? p.privado === true : state === "privado";
+    const change = {};
+    if (ignorar !== (p.ignorar === true)) change.ignorar = ignorar;
+    if (privado !== (p.privado === true)) change.privado = privado;
+    if (Object.keys(change).length) patch[nome] = change;
+  }
+  return patch;
 }
 
 /** Um texto do modo com os {campos} em amarelo, riscados quando desligados em "mostrar" */
@@ -96,6 +130,8 @@ function pill() {
 
 function render() {
   const root = document.getElementById("root");
+  // Cada clique redesenha tudo: sem isso, um clique na lista de projetos volta a janela ao topo
+  const scrollTop = root.querySelector(".scroll")?.scrollTop ?? 0;
   root.replaceChildren();
 
   // Sem estado ainda (o app acabou de abrir): nada a mostrar, nem o aviso de JSON inválido
@@ -144,6 +180,17 @@ function render() {
         toggle(draft.seguirUltimaMensagem, (v) => (draft.seguirUltimaMensagem = v))),
       field("Iniciar com o Windows", null, toggle(draft.iniciar, (v) => (draft.iniciar = v)))),
 
+    h("div", { class: "card" },
+      h("span", { class: "label" }, "Projetos"),
+      Object.keys(draft.projetos).length === 0
+        ? h("p", { class: "note" }, "A lista aparece quando o programa ler o T3 Code.")
+        : Object.keys(draft.projetos).map((nome) => {
+          const apelido = view.config?.projetos?.[nome]?.nome;
+          return field(nome, apelido && apelido !== nome ? `Aparece como "${apelido}"` : null,
+            seg(PROJETO.map(([v, label]) => [v, label]), draft.projetos[nome], (v) => (draft.projetos[nome] = v), false));
+        }),
+      h("p", { class: "note" }, `Privado mostra "${view.config.textoProjetoPrivado || "Projeto privado"}" no lugar do nome, sem o título da conversa. Escondido, o card ignora o projeto e mostra o último que não está escondido.`)),
+
     h("p", { class: "note", style: "margin:0;text-align:center" }, "Textos dos modos, nomes de projetos e imagens ficam no config.json.")));
 
   root.append(h("div", { class: "foot" },
@@ -151,6 +198,8 @@ function render() {
     h("span", { class: "grow" }),
     h("button", { class: "btn dark chunk press", onclick: close }, "Cancelar"),
     h("button", { class: "btn yellow chunk-bright press", onclick: save }, "Salvar")));
+  const scroll = root.querySelector(".scroll");
+  if (scroll) scroll.scrollTop = scrollTop;
 }
 
 async function save() {
@@ -158,9 +207,12 @@ async function save() {
   if (!draft || !view.configOk) return;
   // Um número digitado ainda sem change entra também
   document.activeElement?.blur();
-  const { iniciar, ...patch } = draft;
+  const { iniciar, projetos, ...patch } = draft;
+  const projetosPatch = projectPatch();
+  if (Object.keys(projetosPatch).length) patch.projetos = projetosPatch;
   try {
     await call("send_config", { patch });
+    for (const [nome, change] of Object.entries(projetosPatch)) saved[nome] = { ...saved[nome], ...change };
     // Sempre: o estado em view pode estar um ciclo atrás de um salvar anterior; repetir não muda nada
     await call("set_startup", { enabled: iniciar });
     toast("Salvo");
@@ -192,5 +244,7 @@ await start((next) => {
 });
 await listen("settings-shown", () => {
   draft = null;
+  // Janela aberta de novo começa do topo
+  document.querySelector(".scroll")?.scrollTo(0, 0);
   render();
 });
