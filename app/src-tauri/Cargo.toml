@@ -18,6 +18,16 @@ tauri-plugin-dialog = "2"
 # A pasta da última instalação, que o NSIS grava no registro
 winreg = "0.55"
 
+# Dev builds (cargo build, tauri dev, cargo test): line numbers only for this crate, so panics
+# and backtraces still name file:line, and no debug info for dependencies. Writing and linking
+# full debug info was half of every rebuild: Quackify's one-line rebuild went from 16.9 s to
+# 8.8 s and its clean build from 87 s to 59 s (measured 08/11/26). Release is untouched.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 codegen-units = 1
 lto = true
