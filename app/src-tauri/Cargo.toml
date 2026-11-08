@@ -21,15 +21,18 @@ winreg = "0.55"
 # Dev builds (cargo build, tauri dev, cargo test): line numbers only for this crate, so panics
 # and backtraces still name file:line, and no debug info for dependencies. Writing and linking
 # full debug info was half of every rebuild: Quackify's one-line rebuild went from 16.9 s to
-# 8.8 s and its clean build from 87 s to 59 s (measured 08/11/26). Release is untouched.
+# 8.8 s and its clean build from 87 s to 59 s (measured 08/11/26). Release has its own settings below.
 [profile.dev]
 debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
 
+# No LTO and 16 codegen units (Ender's call, 08/11/26): with lto = true and codegen-units = 1
+# every release re-optimised the whole program, 188 s after a one-line change in Quackify; now
+# 29 s. The exe is about 12% bigger, the installer about 2%.
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = false
 opt-level = "s"
 strip = true
