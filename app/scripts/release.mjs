@@ -1,6 +1,9 @@
 // Publica uma versão do Quack Presence, que as cópias instaladas pegam sozinhas (main.rs, setup.rs):
 //
-//   cd app && npm run release -- 1.0.1 "O que mudou"
+//   cd app && npm run release -- 1.0.1
+//
+// As notas são o [Unreleased] do CHANGELOG.md, que vira esta versão (changelog.mjs): sem nada lá o
+// release para antes do build.
 //
 // De um checkout limpo (qualquer branch ou worktree, à frente da master): põe a versão no
 // package.json, Cargo.toml e tauri.conf.json, gera o instalador assinado com a chave em
@@ -15,13 +18,13 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { packSetup } from "./pack-setup.mjs";
+import { releaseNotes, stampRelease } from "./changelog.mjs";
 
 const REPO = "EnderexDev/Quack-Presence";
 const BRANCH = "master";
 const app = join(import.meta.dirname, "..");
 const root = join(app, "..");
-const [version, ...noteWords] = process.argv.slice(2);
-const notes = noteWords.join(" ").trim();
+const [version, ...extra] = process.argv.slice(2);
 
 const fail = (why) => {
   console.error(`release: ${why}`);
@@ -31,7 +34,8 @@ const fail = (why) => {
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { cwd: root, stdio: "inherit", shell: cmd === "npm", ...opts });
 const read = (cmd, args) => execFileSync(cmd, args, { cwd: root, encoding: "utf8" }).trim();
 
-if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) fail('uso: npm run release -- 1.0.1 "notas"');
+if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) fail("uso: npm run release -- 1.0.1 (as notas vêm do [Unreleased] do CHANGELOG.md)");
+if (extra.length) fail("as notas agora vêm do CHANGELOG.md: escreva elas em \"## [Unreleased]\", faça o commit e rode só npm run release -- <versão>");
 // A master do GitHub tem que ser o código do instalador: o push no fim só passa como fast-forward.
 run("git", ["fetch", "origin", BRANCH]);
 try {
@@ -53,12 +57,24 @@ edit("app/package.json", (s) => s.replace(/"version": "[^"]+"/, `"version": "${v
 edit("app/src-tauri/tauri.conf.json", (s) => s.replace(/"version": "[^"]+"/, `"version": "${version}"`));
 edit("app/src-tauri/Cargo.toml", (s) => s.replace(/^version = "[^"]+"/m, `version = "${version}"`));
 
-const VERSION_FILES = ["app/package.json", "app/src-tauri/tauri.conf.json", "app/src-tauri/Cargo.toml", "app/src-tauri/Cargo.lock"];
+const VERSION_FILES = ["CHANGELOG.md", "app/package.json", "app/src-tauri/tauri.conf.json", "app/src-tauri/Cargo.toml", "app/src-tauri/Cargo.lock"];
 /** Põe a versão velha de volta, para a próxima tentativa não parar em "a árvore tem mudanças" */
 const undo = (why) => {
   run("git", ["checkout", "--", ...VERSION_FILES]);
   fail(`${why}; os arquivos de versão voltaram como estavam`);
 };
+
+// As notas: o [Unreleased] do CHANGELOG.md vira esta versão. Uma segunda tentativa acha a versão
+// já carimbada e usa ela.
+let notes;
+try {
+  const before = readFileSync(join(root, "CHANGELOG.md"), "utf8");
+  const after = stampRelease(before, version, new Date().toISOString().slice(0, 10), REPO);
+  writeFileSync(join(root, "CHANGELOG.md"), after);
+  notes = releaseNotes(after, version).trim();
+} catch (err) {
+  undo(err.message);
+}
 
 try {
   run("npm", ["run", "app:build"], {
