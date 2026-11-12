@@ -266,6 +266,32 @@ fn update_now(app: AppHandle) -> Result<(), String> {
     apply_update(&app)
 }
 
+/**
+ * O botão Verificar do painel: procura no GitHub agora, sem esperar a procura de 6 em 6 horas.
+ * Devolve a versão achada (ou nada). Com o automático ligado, uma versão achada já começa a instalar.
+ */
+#[tauri::command]
+async fn check_update_now(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    if !app.state::<Shared>().installed {
+        return Err("A cópia de desenvolvimento não se atualiza".into());
+    }
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let found = updater
+        .check()
+        .await
+        .map(|u| u.map(|u| u.version))
+        .map_err(|e| format!("Não deu para procurar no GitHub: {e}"))?;
+    *app.state::<Shared>().update.lock().unwrap() = found.clone();
+    refresh(&app);
+    if found.is_some() {
+        // A instalação fecha o app: numa thread, para esta resposta chegar ao painel antes
+        let app = app.clone();
+        thread::spawn(move || maybe_apply(&app));
+    }
+    Ok(found)
+}
+
 // ---------- atualização ----------
 
 /** Procura versão nova a cada 6 horas e, com o automático ligado, instala assim que acha */
@@ -718,7 +744,7 @@ mod tests {
         for call in [r#""quit""#, r#""reconnect""#, r#""show_settings""#, r#"which: "config""#, r#"which: "log""#, r#""send_config""#] {
             assert!(tray.contains(call), "painel sem {call}");
         }
-        for call in [r#""update_now""#, "atualizarSozinho"] {
+        for call in [r#""update_now""#, r#""check_update_now""#, "atualizarSozinho"] {
             assert!(tray.contains(call), "painel sem {call}");
         }
         // Esconder direto pela API da janela deixaria o WebView2 desenhando escondido
@@ -763,7 +789,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(shared)
-        .invoke_handler(tauri::generate_handler![get_view, send_config, reconnect, set_startup, update_now, open_file, show_settings, hide_window, tray_fit, quit])
+        .invoke_handler(tauri::generate_handler![get_view, send_config, reconnect, set_startup, update_now, check_update_now, open_file, show_settings, hide_window, tray_fit, quit])
         .setup(move |app| {
             // Sem menu nativo, como no Quack: o Windows abre ele sob o cursor, por cima da barra
             // de tarefas, e um jogo em tela cheia o cobre. Sair fica no painel.

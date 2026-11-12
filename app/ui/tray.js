@@ -1,8 +1,10 @@
 // O painel da bandeja: o estado, o card que está no Discord, a troca de modo e o que o menu do
 // tray.ps1 tinha (configurações, reconectar, abrir config.json e log, sair).
-import { call, dotFor, h, hideWindow, invoke, listen, start } from "./common.js";
+import { call, dotFor, h, hideWindow, invoke, listen, start, toast } from "./common.js";
 
 let view = {};
+/** Uma procura do botão Verificar em andamento */
+let checking = false;
 
 function render() {
   document.getElementById("app").textContent = view.app || "StarX Studio";
@@ -57,11 +59,32 @@ function renderUpdate() {
     ? `Atualizando para a ${nova}, volta em alguns segundos`
     : nova
       ? `Versão ${nova} disponível`
-      : view.instalado
-        ? `Versão ${view.versao ?? ""}`
-        : `Versão ${view.versao ?? ""}, não se atualiza`;
+      : checking
+        ? "Procurando versão nova..."
+        : view.instalado
+          ? `Versão ${view.versao ?? ""}`
+          : `Versão ${view.versao ?? ""}, não se atualiza`;
   // Com o automático ligado a versão nova entra sozinha; o botão é para quem desligou
   document.getElementById("updnow").classList.toggle("hidden", !nova || sozinho || view.atualizando);
+  // Verificar some quando já há versão achada: aí quem age é o Atualizar (ou o automático)
+  const check = document.getElementById("updcheck");
+  check.classList.toggle("hidden", !view.instalado || Boolean(nova) || Boolean(view.atualizando));
+  check.disabled = checking;
+}
+
+/** O botão Verificar: procura agora, sem esperar a procura automática de 6 em 6 horas */
+async function checkNow() {
+  checking = true;
+  renderUpdate();
+  try {
+    const found = await call("check_update_now");
+    if (!found) toast(`Nenhuma versão nova: a ${view.versao ?? ""} é a mais nova`);
+  } catch {
+    // o toast de erro já saiu
+  } finally {
+    checking = false;
+    renderUpdate();
+  }
 }
 
 async function setAutoUpdate(on) {
@@ -97,6 +120,7 @@ new ResizeObserver(fit).observe(panel);
 document.getElementById("ativo").addEventListener("click", () => setActive(view.config?.ativo === false));
 document.getElementById("updauto").addEventListener("click", () => setAutoUpdate(view.config?.atualizarSozinho === false));
 document.getElementById("updnow").addEventListener("click", () => call("update_now"));
+document.getElementById("updcheck").addEventListener("click", checkNow);
 document.getElementById("settings").addEventListener("click", () => call("show_settings"));
 document.getElementById("quit").addEventListener("click", () => call("quit"));
 document.getElementById("reconnect").addEventListener("click", () => call("reconnect"));

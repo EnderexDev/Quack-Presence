@@ -7,6 +7,12 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+### Added
+- A Verificar button in the panel looks for a new version right away, instead of waiting for the automatic check every 6 hours. It says when you already have the newest version; when there is one, it installs it (with Atualizar sozinho on) or shows the Atualizar button.
+
+### Changed
+- Quack Presence uses less memory. The settings window now opens when you click it and really closes when you leave it, instead of staying loaded in the background, and its windows draw without the GPU. With the panel closed it now keeps about 100 MB instead of about 225 MB, with one process less.
+
 ## [1.1.5] - 2026-11-12
 
 ### Fixed
