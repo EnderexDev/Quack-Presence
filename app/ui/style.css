@@ -68,10 +68,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .pill.live { color: var(--live-soft); } .pill.warn { color: var(--idle); } .pill.bad { color: #ff8b84; } .pill.brand { color: var(--brand-400); } .pill.sky { color: var(--sky-300); }
 .pill.mono { font-family: var(--mono); letter-spacing: .02em; text-transform: none; font-weight: 600; }
 button.pill { cursor: pointer; }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-500); }
-.dot.live { background: var(--live); animation: pulse 2.4s ease-out infinite; }
+.dot { position: relative; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-500); }
+.dot.live { background: var(--live); }
+/* O anel do pulso cresce e some só com transform e opacity: o compositor anima sem repintar a página */
+.dot.live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(74,222,128,.55); animation: pulse 2.4s ease-out infinite; }
 .dot.warn { background: var(--idle); } .dot.bad { background: var(--busy); }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(74,222,128,.55); } 70% { box-shadow: 0 0 0 6px rgba(74,222,128,0); } }
+@keyframes pulse { 0% { transform: scale(1); opacity: 1; } 70%,100% { transform: scale(2.5); opacity: 0; } }
+/* Janela sem foco ou minimizada (common.js liga a classe): nenhuma animação gasta quadro */
+body.paused *, body.paused *::before, body.paused *::after { animation-play-state: paused !important; }
 
 .game { display: flex; align-items: center; gap: 10px; border-radius: 12px; background: var(--ink-900); padding: 9px 12px; width: 100%; text-align: left; }
 .game b { color: var(--ink-200); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -179,8 +183,9 @@ body.traybody { background: transparent; overflow: hidden; }
 .setupactions { margin-top: auto; display: flex; gap: 8px; }
 .setupactions .btn { font-size: 12px; padding: 10px 22px; }
 .setupprogress { width: 70%; height: 10px; border-radius: 999px; border: 3px solid var(--line); background: var(--ink-900); overflow: hidden; position: relative; }
-.setupprogress i { position: absolute; top: 0; bottom: 0; width: 35%; border-radius: 999px; background: linear-gradient(90deg, var(--brand-400), #ff8a0f); animation: slide 1.2s ease-in-out infinite; }
-@keyframes slide { 0% { left: -35%; } 100% { left: 100%; } }
+.setupprogress i { position: absolute; top: 0; bottom: 0; width: 35%; border-radius: 999px; background: linear-gradient(90deg, var(--brand-400), #ff8a0f); left: 0; animation: slide 1.2s ease-in-out infinite; }
+/* Em transform, não em left: a faixa tem 35% da barra, então -100% e 286% dela são -35% e 100% da barra */
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(285.72%); } }
 
 /* Nome de arquivo em mono e minúsculo, como os caminhos no Quack */
 .btn.file { font-family: var(--mono); font-size: 11px; letter-spacing: 0; text-transform: none; font-weight: 600; }

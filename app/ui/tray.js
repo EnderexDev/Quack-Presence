@@ -1,6 +1,6 @@
 // O painel da bandeja: o estado, o card que está no Discord, a troca de modo e o que o menu do
 // tray.ps1 tinha (configurações, reconectar, abrir config.json e log, sair).
-import { call, dotFor, h, invoke, listen, start } from "./common.js";
+import { call, dotFor, h, hideWindow, invoke, listen, start } from "./common.js";
 
 let view = {};
 
@@ -103,7 +103,7 @@ document.getElementById("reconnect").addEventListener("click", () => call("recon
 document.getElementById("config").addEventListener("click", () => call("open_file", { which: "config" }));
 document.getElementById("log").addEventListener("click", () => call("open_file", { which: "log" }));
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") window.__TAURI__.window.getCurrentWindow().hide();
+  if (event.key === "Escape") hideWindow();
 });
 
 await start((next) => {

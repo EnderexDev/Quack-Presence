@@ -4,6 +4,17 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 export { invoke, listen };
 
+/**
+ * Sem foco (coberta, atrás de outra ou minimizada) a janela pausa as animações: o visibilitychange
+ * não serve, porque uma janela coberta continua "visível" para ele. Minimizar também tira o foco.
+ */
+const pause = (focused) => document.body.classList.toggle("paused", !focused);
+pause(document.hasFocus());
+window.__TAURI__.window.getCurrentWindow().onFocusChanged(({ payload }) => pause(payload));
+
+/** Esconde esta janela pelo app, que também avisa o WebView2 para parar de desenhar */
+export const hideWindow = () => invoke("hide_window");
+
 /** Montador de elementos: h("div", { class: "x", onclick }, "texto", filho) */
 export function h(tag, props = {}, ...children) {
   const node = document.createElement(tag);

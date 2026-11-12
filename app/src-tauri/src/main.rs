@@ -352,9 +352,32 @@ fn open_file(app: AppHandle, which: String) -> Result<(), String> {
 #[tauri::command]
 fn show_settings(app: AppHandle) {
     if let Some(tray) = app.get_webview_window("tray") {
-        let _ = tray.hide();
+        hide(&tray);
     }
     show_settings_window(&app);
+}
+
+/** O Esc e o Cancelar das janelas: escondem pelo hide() daqui, que também para o WebView2 */
+#[tauri::command]
+fn hide_window(window: WebviewWindow) {
+    hide(&window);
+}
+
+/**
+ * Mostra a janela e o WebView2 dela. Uma janela escondida só pelo Windows continua com o WebView2
+ * achando que está na tela, desenhando cada quadro das animações (0,6 núcleo medido em 12/11/26).
+ */
+fn show(window: &WebviewWindow) {
+    let webview: &tauri::Webview = window.as_ref();
+    let _ = webview.show();
+    let _ = window.show();
+}
+
+/** Esconde a janela e avisa o WebView2 (SetIsVisible false), que então para de desenhar */
+fn hide(window: &WebviewWindow) {
+    let _ = window.hide();
+    let webview: &tauri::Webview = window.as_ref();
+    let _ = webview.hide();
 }
 
 #[tauri::command]
@@ -375,7 +398,7 @@ fn quit(app: AppHandle) {
 fn show_settings_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("settings") {
         let _ = app.emit_to("settings", "settings-shown", ());
-        let _ = window.show();
+        show(&window);
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
@@ -491,7 +514,7 @@ fn toggle_tray(app: &AppHandle, rect: (f64, f64, f64, f64)) {
     let Some(window) = app.get_webview_window("tray") else { return };
     let shared = app.state::<Shared>();
     if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
+        hide(&window);
         return;
     }
     // Clicar no ícone com o painel aberto primeiro tira o foco dele, o que já o esconde: esse
@@ -501,7 +524,7 @@ fn toggle_tray(app: &AppHandle, rect: (f64, f64, f64, f64)) {
     }
     *shared.tray_rect.lock().unwrap() = Some(rect);
     place_tray(app, &window);
-    let _ = window.show();
+    show(&window);
     let _ = window.set_focus();
     let _ = app.emit_to("tray", "tray-shown", ());
 }
@@ -636,6 +659,10 @@ mod tests {
         for call in [r#""update_now""#, "atualizarSozinho"] {
             assert!(tray.contains(call), "painel sem {call}");
         }
+        // Esconder direto pela API da janela deixaria o WebView2 desenhando escondido
+        for (name, js) in [("tray.js", tray), ("settings.js", settings)] {
+            assert!(!js.contains(".hide()") && js.contains("hideWindow()"), "{name} esconde sem o hide_window");
+        }
         for key in ["modoAtivo", "mostrar", "tipo", "quandoOcioso", "ociosoMinutos", "ausenteMinutos", "intervaloSegundos", "seguirUltimaMensagem", "set_startup"] {
             assert!(settings.contains(key), "configurações sem {key}");
         }
@@ -674,7 +701,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(shared)
-        .invoke_handler(tauri::generate_handler![get_view, send_config, reconnect, set_startup, update_now, open_file, show_settings, tray_fit, quit])
+        .invoke_handler(tauri::generate_handler![get_view, send_config, reconnect, set_startup, update_now, open_file, show_settings, hide_window, tray_fit, quit])
         .setup(move |app| {
             // Sem menu nativo, como no Quack: o Windows abre ele sob o cursor, por cima da barra
             // de tarefas, e um jogo em tela cheia o cobre. Sair fica no painel.
@@ -704,6 +731,10 @@ fn main() {
             thread::spawn(move || parent_watch(handle));
             let handle = app.handle().clone();
             thread::spawn(move || update_loop(handle));
+            // As janelas nascem escondidas (tauri.conf.json), mas o WebView2 delas nasce visível
+            for window in app.webview_windows().values() {
+                hide(window);
+            }
             if args.iter().any(|a| a == "--settings") {
                 show_settings_window(app.handle());
             }
@@ -713,11 +744,15 @@ fn main() {
             // Fechar a janela só a esconde; sair fica no painel
             ("settings", WindowEvent::CloseRequested { api, .. }) => {
                 api.prevent_close();
-                let _ = window.hide();
+                if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                    hide(&webview);
+                }
             }
             ("tray", WindowEvent::Focused(false)) => {
                 if window.is_visible().unwrap_or(false) {
-                    let _ = window.hide();
+                    if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                        hide(&webview);
+                    }
                     *window.app_handle().state::<Shared>().tray_hidden_at.lock().unwrap() = Some(Instant::now());
                 }
             }

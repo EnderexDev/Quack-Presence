@@ -1,6 +1,6 @@
 // A janela de configurações: o que a do tray.ps1 tinha, com a prévia do card ao vivo. Salvar manda
 // um pedaço do config.json ao presence.mjs, que troca só esses valores no texto do arquivo.
-import { call, dotFor, h, listen, start, toast } from "./common.js";
+import { call, dotFor, h, hideWindow, listen, start, toast } from "./common.js";
 
 // Padrões iguais aos do presence.mjs: projeto, atividade e timer ligados; o resto desligado.
 const CAMPOS = [
@@ -223,7 +223,7 @@ async function save() {
 
 function close() {
   draft = null;
-  window.__TAURI__.window.getCurrentWindow().hide();
+  hideWindow();
 }
 
 document.addEventListener("keydown", (event) => {
