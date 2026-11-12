@@ -7,6 +7,9 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+### Fixed
+- Uninstalling now also removes the on/off setting Task Manager keeps for the Start with Windows entry, so a later install does not come back with it switched off.
+
 ## [1.1.3] - 2026-11-12
 
 ### Changed
