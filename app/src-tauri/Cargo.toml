@@ -1,6 +1,6 @@
 [package]
 name = "quack-presence-tray"
-version = "1.1.5"
+version = "1.1.6"
 description = "Quack Presence: o ícone na bandeja e a janela de configurações"
 edition = "2021"
 

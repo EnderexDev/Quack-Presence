@@ -7,6 +7,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-11-12
+
 ### Added
 - A Verificar button in the panel looks for a new version right away, instead of waiting for the automatic check every 6 hours. It says when you already have the newest version; when there is one, it installs it (with Atualizar sozinho on) or shows the Atualizar button.
 
@@ -46,7 +48,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 ### Added
 - Its own installer and automatic updates from GitHub, with an Update button in the tray panel.
 
-[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.5...HEAD
+[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.6...HEAD
+[1.1.6]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.2...v1.1.3
