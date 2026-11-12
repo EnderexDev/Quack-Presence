@@ -7,7 +7,7 @@
 //   abre a cópia com --quack-update <pasta> e manda o presence.mjs sair. A cópia baixa a versão
 //   nova (a assinatura conferida com a chave do tauri.conf.json), roda o NSIS com /UPDATE /R e o
 //   NSIS abre o Quack Presence de novo. Da pasta temp, porque o NSIS sobrescreve a pasta
-//   instalada, e com outro nome, porque o NSIS fecha todo quack-presence-tray.exe antes.
+//   instalada, e com outro nome, porque o NSIS fecha todo Quack Presence.exe antes.
 // - Aberto sem --dir (atalho do Iniciar, o /R do NSIS, a chave Run), o exe é o lançador:
 //   abre o node presence.mjs escondido e sai. O presence.mjs abre este exe de novo, com --dir.
 use std::fs::{self, File};
@@ -24,8 +24,13 @@ pub const LABEL: &str = "setup";
 const MAGIC: &[u8; 8] = b"QPSETUP1";
 const UPDATE_ARG: &str = "--quack-update";
 const UPDATER_EXE: &str = "Quack-Presence-Updater.exe";
-/** O binário que o NSIS instala (o nome do crate) */
-pub const BINARY: &str = "quack-presence-tray.exe";
+/** O binário que o NSIS instala (o mainBinaryName do tauri.conf.json) */
+pub const BINARY: &str = "Quack Presence.exe";
+/**
+ * O nome dele até a 1.1.2 (o do crate). A aba Inicializar do Gerenciador de Tarefas mostra o nome
+ * do arquivo, não a descrição do exe: com este nome a entrada aparecia como quack-presence-tray.exe.
+ */
+const OLD_BINARY: &str = "quack-presence-tray.exe";
 const PRODUCT: &str = "Quack Presence";
 /** A trava de instância única do presence.mjs, que também aceita "quit" */
 const LOCK_PIPE: &str = r"\\.\pipe\quack-presence-lock";
@@ -143,7 +148,7 @@ fn message_box(text: &str) {
 
 // ---------- o início com o Windows: o valor "Quack Presence" da chave Run ----------
 //
-// A chave Run abre o quack-presence-tray.exe sem --dir, o lançador acima. A aba Inicializar do
+// A chave Run abre o Quack Presence.exe sem --dir, o lançador acima. A aba Inicializar do
 // Gerenciador de Tarefas mostra o nome do arquivo e o ícone do exe que a entrada abre; até a 1.1.2
 // a entrada era um .vbs na pasta Inicializar, que aparecia lá como quack-presence.vbs e sem ícone.
 
@@ -280,7 +285,7 @@ fn remove_legacy() -> Result<(), String> {
 }
 
 /**
- * Liga ou desliga o início com o Windows abrindo `exe` (o quack-presence-tray.exe da pasta do
+ * Liga ou desliga o início com o Windows abrindo `exe` (o Quack Presence.exe da pasta do
  * presence.mjs). Ligar grava a chave Run antes de apagar o .vbs: se apagar falhar, o Windows abre
  * os dois e a trava do presence.mjs fecha o segundo; na ordem inversa poderia não ficar nenhum.
  */
@@ -299,8 +304,11 @@ pub fn set_startup(exe: &Path, enabled: bool) -> Result<bool, String> {
  * Quem instalou até a 1.1.2 tem o .vbs: a primeira abertura da versão nova (o /R da atualização)
  * troca ele pela chave Run, desligada se estava desligada no Gerenciador de Tarefas. Só o .vbs
  * desta pasta: um .vbs apontando para outro checkout fica como está.
+ * Uma chave Run que abre o quack-presence-tray.exe desta pasta passa para o nome novo, ligada ou
+ * desligada como estava, e o exe velho sai, se o NSIS não conseguiu apagar.
  */
 pub fn migrate_startup(dir: &Path, exe: &Path) {
+    migrate_old_binary(dir, exe);
     let Some(legacy) = legacy_dir() else { return };
     if legacy.canonicalize().ok() != dir.canonicalize().ok() {
         return;
@@ -309,6 +317,28 @@ pub fn migrate_startup(dir: &Path, exe: &Path) {
     match enable(exe, &approval).and_then(|_| remove_legacy()) {
         Ok(()) => update_log(dir, "início com o Windows: quack-presence.vbs trocado pela chave Run"),
         Err(e) => update_log(dir, &format!("início com o Windows: a troca do .vbs falhou: {e}")),
+    }
+}
+
+fn migrate_old_binary(dir: &Path, exe: &Path) {
+    let old = dir.join(OLD_BINARY);
+    if exe.file_name().is_some_and(|n| n == OLD_BINARY) {
+        return;
+    }
+    // Pela pasta, que continua existindo: o exe velho o NSIS já pode ter apagado
+    let points_to_old = run_value().and_then(|c| exe_from_command(&c)).is_some_and(|run| {
+        run.file_name().is_some_and(|n| n.eq_ignore_ascii_case(OLD_BINARY))
+            && run.parent().and_then(|p| p.canonicalize().ok()).is_some_and(|p| Some(p) == dir.canonicalize().ok())
+    });
+    if points_to_old {
+        let approval = approved(APPROVED_RUN, RUN_NAME).filter(|b| b.len() == 12).unwrap_or(APPROVED_ON.to_vec());
+        match enable(exe, &approval) {
+            Ok(()) => update_log(dir, &format!("início com o Windows: a chave Run agora abre {BINARY}")),
+            Err(e) => update_log(dir, &format!("início com o Windows: a troca para {BINARY} falhou: {e}")),
+        }
+    }
+    if old.is_file() {
+        let _ = fs::remove_file(&old);
     }
 }
 
@@ -707,9 +737,9 @@ mod tests {
 
     #[test]
     fn the_run_command_opens_the_exe_and_reads_back() {
-        let exe = Path::new(r"C:\Users\Zé\AppData\Local\Quack Presence\quack-presence-tray.exe");
+        let exe = Path::new(r"C:\Users\Zé\AppData\Local\Quack Presence\Quack Presence.exe");
         let command = run_command(exe);
-        assert_eq!(command, r#""C:\Users\Zé\AppData\Local\Quack Presence\quack-presence-tray.exe""#);
+        assert_eq!(command, r#""C:\Users\Zé\AppData\Local\Quack Presence\Quack Presence.exe""#);
         assert_eq!(exe_from_command(&command).as_deref(), Some(exe));
         assert_eq!(exe_from_command(r"C:\x\a.exe --flag").as_deref(), Some(Path::new(r"C:\x\a.exe")));
         assert_eq!(exe_from_command(r#""C:\sem fim"#), None);

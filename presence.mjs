@@ -852,11 +852,14 @@ let wakePending = false;
 // compilado, o tray.ps1 faz o mesmo em WinForms. Os dois falam por linhas no stdout deles, e o
 // app sai quando o stdin fecha, o que acontece quando este processo morre de qualquer jeito.
 // Nos testes (pipe falso) ou com T3P_NO_TRAY, não abre.
-// Instalado, o exe fica ao lado deste arquivo; no checkout de dev, onde o cargo build deixa.
+// Instalado, o exe fica ao lado deste arquivo; no checkout de dev, onde o build deixa: o tauri
+// build renomeia para o mainBinaryName, um cargo build solto deixa o nome do crate.
+const DEV_BUILD = path.join(DIR, "app", "src-tauri", "target", "release");
 const TRAY_EXE =
   [
-    path.join(DIR, "quack-presence-tray.exe"),
-    path.join(DIR, "app", "src-tauri", "target", "release", "quack-presence-tray.exe"),
+    path.join(DIR, "Quack Presence.exe"),
+    path.join(DEV_BUILD, "Quack Presence.exe"),
+    path.join(DEV_BUILD, "quack-presence-tray.exe"),
   ].find((p) => fs.existsSync(p)) ?? "";
 
 function startTray() {

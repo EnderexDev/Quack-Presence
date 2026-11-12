@@ -8,7 +8,7 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 ## [Unreleased]
 
 ### Changed
-- Start with Windows now opens `quack-presence-tray.exe` from the Run key, so Task Manager's Startup tab shows it with the Quack Presence icon instead of `quack-presence.vbs`. An install that had the old script switches over on its first start after the update, keeping it on or off as it was.
+- Start with Windows now opens `Quack Presence.exe` from the Run key, so Task Manager's Startup tab shows it as Quack Presence with its icon instead of `quack-presence.vbs`. The app's exe is now `Quack Presence.exe` (it was `quack-presence-tray.exe`), and the update points the Start menu shortcut at it. An install that had the old script switches over on its first start after the update, keeping it on or off as it was.
 
 ## [1.1.2] - 2026-11-05
 

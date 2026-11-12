@@ -96,7 +96,8 @@ copyFileSync(built, nsis);
 copyFileSync(`${built}.sig`, `${nsis}.sig`);
 // O mesmo nome em toda versão: o README aponta para releases/latest/download/Quack-Presence-Setup.exe
 const friendly = join(bundle, "Quack-Presence-Setup.exe");
-packSetup(join(release, "quack-presence-tray.exe"), nsis, friendly);
+// O exe com o nome do mainBinaryName do tauri.conf.json, que o tauri build dá ao do cargo
+packSetup(join(release, "Quack Presence.exe"), nsis, friendly);
 const latest = join(bundle, "latest.json");
 writeFileSync(
   latest,
