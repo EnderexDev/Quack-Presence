@@ -7,6 +7,9 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+### Fixed
+- Quack Presence no longer uses CPU and GPU while its panel and settings window are closed or out of focus: it used about half a CPU core all the time, drawing the green status dot's animation in windows nobody could see.
+
 ## [1.1.4] - 2026-11-12
 
 ### Fixed
