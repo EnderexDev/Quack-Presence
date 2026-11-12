@@ -7,6 +7,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-12
+
 ### Fixed
 - Uninstalling now also removes the on/off setting Task Manager keeps for the Start with Windows entry, so a later install does not come back with it switched off.
 
@@ -33,7 +35,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 ### Added
 - Its own installer and automatic updates from GitHub, with an Update button in the tray panel.
 
-[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.0...v1.1.1
