@@ -7,6 +7,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-12
+
 ### Changed
 - Start with Windows now opens `Quack Presence.exe` from the Run key, so Task Manager's Startup tab shows it as Quack Presence with its icon instead of `quack-presence.vbs`. The app's exe is now `Quack Presence.exe` (it was `quack-presence-tray.exe`), and the update points the Start menu shortcut at it. An install that had the old script switches over on its first start after the update, keeping it on or off as it was.
 
@@ -28,7 +30,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 ### Added
 - Its own installer and automatic updates from GitHub, with an Update button in the tray panel.
 
-[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/EnderexDev/Quack-Presence/releases/tag/v1.1.0
