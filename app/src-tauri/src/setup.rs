@@ -8,7 +8,7 @@
 //   nova (a assinatura conferida com a chave do tauri.conf.json), roda o NSIS com /UPDATE /R e o
 //   NSIS abre o Quack Presence de novo. Da pasta temp, porque o NSIS sobrescreve a pasta
 //   instalada, e com outro nome, porque o NSIS fecha todo quack-presence-tray.exe antes.
-// - Aberto sem --dir (atalho do Iniciar, o /R do NSIS, a pasta Inicializar), o exe é o lançador:
+// - Aberto sem --dir (atalho do Iniciar, o /R do NSIS, a chave Run), o exe é o lançador:
 //   abre o node presence.mjs escondido e sai. O presence.mjs abre este exe de novo, com --dir.
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -141,26 +141,75 @@ fn message_box(text: &str) {
     }
 }
 
-// ---------- o .vbs da pasta Inicializar ----------
+// ---------- o início com o Windows: o valor "Quack Presence" da chave Run ----------
+//
+// A chave Run abre o quack-presence-tray.exe sem --dir, o lançador acima. A aba Inicializar do
+// Gerenciador de Tarefas mostra o nome do arquivo e o ícone do exe que a entrada abre; até a 1.1.2
+// a entrada era um .vbs na pasta Inicializar, que aparecia lá como quack-presence.vbs e sem ícone.
 
-pub fn startup_link() -> Option<PathBuf> {
+const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+const RUN_NAME: &str = PRODUCT;
+/** Onde o Gerenciador de Tarefas guarda o ligado/desligado de cada entrada */
+const APPROVED_RUN: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+const APPROVED_FOLDER: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder";
+const LEGACY_SCRIPT: &str = "quack-presence.vbs";
+/** 12 bytes: o primeiro 2 é ligado, 3 desligado; o resto é a hora em que foi desligado */
+const APPROVED_ON: [u8; 12] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+/** O .vbs que o botão "Iniciar com o Windows" escrevia até a 1.1.2 */
+fn legacy_script() -> Option<PathBuf> {
     let appdata = std::env::var_os("APPDATA")?;
-    Some(PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Startup\quack-presence.vbs"))
+    Some(PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Startup").join(LEGACY_SCRIPT))
 }
 
-/** O script da pasta Inicializar para a pasta `dir`: o mesmo que o start-hidden.vbs fazia */
-pub fn startup_script(dir: &Path) -> String {
-    let dir = dir.display().to_string().replace('"', "");
-    format!(
-        "' Inicia o Quack Presence sem janela. Escrito pelo botão \"Iniciar com o Windows\".\r\n\
-         dir = \"{dir}\"\r\n\
-         CreateObject(\"WScript.Shell\").Run \"node --no-warnings \"\"\" & dir & \"\\presence.mjs\"\"\", 0, False\r\n"
-    )
+fn hkcu() -> winreg::RegKey {
+    winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
 }
 
-/** A pasta para onde o .vbs da pasta Inicializar aponta hoje (a linha dir = "...") */
+fn run_value() -> Option<String> {
+    hkcu().open_subkey(RUN_KEY).ok()?.get_value::<String, _>(RUN_NAME).ok()
+}
+
+fn approved(key: &str, name: &str) -> Option<Vec<u8>> {
+    hkcu().open_subkey(key).ok()?.get_raw_value(name).ok().map(|v| v.bytes)
+}
+
+/** Desligada no Gerenciador de Tarefas: o primeiro byte ímpar (3; 7 onde o Windows marca outra coisa no bit 2) */
+fn disabled(approval: Option<Vec<u8>>) -> bool {
+    approval.and_then(|b| b.first().copied()).is_some_and(|b| b & 1 == 1)
+}
+
+/** O botão aparece ligado: a entrada existe e não foi desligada no Gerenciador de Tarefas */
+pub fn startup_on() -> bool {
+    let run = run_value().is_some() && !disabled(approved(APPROVED_RUN, RUN_NAME));
+    let legacy = legacy_script().is_some_and(|p| p.exists()) && !disabled(approved(APPROVED_FOLDER, LEGACY_SCRIPT));
+    run || legacy
+}
+
+/** O comando da chave Run: o exe entre aspas, porque a pasta tem espaço */
+pub fn run_command(exe: &Path) -> String {
+    format!("\"{}\"", exe.display().to_string().replace('"', ""))
+}
+
+/** O exe de um comando da chave Run, com ou sem aspas */
+fn exe_from_command(command: &str) -> Option<PathBuf> {
+    let command = command.trim();
+    let exe = match command.strip_prefix('"') {
+        Some(rest) => &rest[..rest.find('"')?],
+        None => command.split_whitespace().next()?,
+    };
+    (!exe.is_empty()).then(|| PathBuf::from(exe))
+}
+
+/** A pasta do presence.mjs que o início com o Windows abre hoje: a da chave Run, senão a do .vbs */
 fn startup_dir() -> Option<PathBuf> {
-    let bytes = fs::read(startup_link()?).ok()?;
+    let from_run = run_value().and_then(|c| exe_from_command(&c)).and_then(|exe| find_app_dir(&exe));
+    from_run.or_else(legacy_dir)
+}
+
+/** A pasta para onde o .vbs da pasta Inicializar aponta (a linha dir = "...") */
+fn legacy_dir() -> Option<PathBuf> {
+    let bytes = fs::read(legacy_script()?).ok()?;
     let text = if bytes.starts_with(&[0xFF, 0xFE]) {
         let wide: Vec<u16> = bytes[2..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
         String::from_utf16_lossy(&wide)
@@ -178,8 +227,8 @@ fn dir_from_script(text: &str) -> Option<PathBuf> {
 }
 
 /**
- * Numa pasta nova, o config.json da instalação de antes (a do .vbs de início, o checkout de dev
- * até aqui) vem junto: os projetos privados e escondidos dele não podem aparecer no Discord.
+ * Numa pasta nova, o config.json da instalação de antes (a do início com o Windows, o checkout de
+ * dev até aqui) vem junto: os projetos privados e escondidos dele não podem aparecer no Discord.
  */
 fn carry_config(dest: &Path) -> Result<(), String> {
     let target = dest.join("config.json");
@@ -202,17 +251,65 @@ fn carry_config(dest: &Path) -> Result<(), String> {
         })
 }
 
-/** Liga ou desliga o início com o Windows para a pasta `dir`. UTF-16 com BOM: um caminho com acento. */
-pub fn set_startup(dir: &Path, enabled: bool) -> Result<bool, String> {
-    let link = startup_link().ok_or("pasta Inicializar não encontrada")?;
-    if enabled {
-        let mut bytes = vec![0xFF, 0xFE];
-        bytes.extend(startup_script(dir).encode_utf16().flat_map(u16::to_le_bytes));
-        fs::write(&link, bytes).map_err(|e| e.to_string())?;
-    } else if link.exists() {
-        fs::remove_file(&link).map_err(|e| e.to_string())?;
+fn delete_value(key: &str, name: &str) -> Result<(), String> {
+    use winreg::enums::KEY_SET_VALUE;
+    let Ok(key) = hkcu().open_subkey_with_flags(key, KEY_SET_VALUE) else { return Ok(()) };
+    match key.delete_value(name) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+        _ => Ok(()),
     }
-    Ok(link.exists())
+}
+
+/** A chave Run abrindo `exe`, com o ligado/desligado `approval` do Gerenciador de Tarefas */
+fn enable(exe: &Path, approval: &[u8]) -> Result<(), String> {
+    use winreg::enums::REG_BINARY;
+    let (run, _) = hkcu().create_subkey(RUN_KEY).map_err(|e| e.to_string())?;
+    run.set_value(RUN_NAME, &run_command(exe)).map_err(|e| e.to_string())?;
+    let (approved, _) = hkcu().create_subkey(APPROVED_RUN).map_err(|e| e.to_string())?;
+    approved
+        .set_raw_value(RUN_NAME, &winreg::RegValue { bytes: approval.to_vec(), vtype: REG_BINARY })
+        .map_err(|e| e.to_string())
+}
+
+/** Apaga o .vbs e o ligado/desligado dele, que o Windows não apaga sozinho */
+fn remove_legacy() -> Result<(), String> {
+    if let Some(script) = legacy_script().filter(|p| p.exists()) {
+        fs::remove_file(&script).map_err(|e| format!("não deu pra apagar {}: {e}", script.display()))?;
+    }
+    delete_value(APPROVED_FOLDER, LEGACY_SCRIPT)
+}
+
+/**
+ * Liga ou desliga o início com o Windows abrindo `exe` (o quack-presence-tray.exe da pasta do
+ * presence.mjs). Ligar grava a chave Run antes de apagar o .vbs: se apagar falhar, o Windows abre
+ * os dois e a trava do presence.mjs fecha o segundo; na ordem inversa poderia não ficar nenhum.
+ */
+pub fn set_startup(exe: &Path, enabled: bool) -> Result<bool, String> {
+    if enabled {
+        enable(exe, &APPROVED_ON)?;
+    } else {
+        delete_value(RUN_KEY, RUN_NAME)?;
+        delete_value(APPROVED_RUN, RUN_NAME)?;
+    }
+    remove_legacy()?;
+    Ok(startup_on())
+}
+
+/**
+ * Quem instalou até a 1.1.2 tem o .vbs: a primeira abertura da versão nova (o /R da atualização)
+ * troca ele pela chave Run, desligada se estava desligada no Gerenciador de Tarefas. Só o .vbs
+ * desta pasta: um .vbs apontando para outro checkout fica como está.
+ */
+pub fn migrate_startup(dir: &Path, exe: &Path) {
+    let Some(legacy) = legacy_dir() else { return };
+    if legacy.canonicalize().ok() != dir.canonicalize().ok() {
+        return;
+    }
+    let approval = approved(APPROVED_FOLDER, LEGACY_SCRIPT).filter(|b| b.len() == 12).unwrap_or(APPROVED_ON.to_vec());
+    match enable(exe, &approval).and_then(|_| remove_legacy()) {
+        Ok(()) => update_log(dir, "início com o Windows: quack-presence.vbs trocado pela chave Run"),
+        Err(e) => update_log(dir, &format!("início com o Windows: a troca do .vbs falhou: {e}")),
+    }
 }
 
 // ---------- parar o que já está aberto ----------
@@ -352,7 +449,7 @@ pub fn run(mut context: tauri::Context<tauri::Wry>, mode: Mode) {
         .invoke_handler(tauri::generate_handler![setup_info, setup_installed, setup_pick_folder, setup_install, setup_launch, setup_close])
         .on_window_event(|_, event| {
             // Alt+F4 no meio da instalação mataria o processo depois do NSIS e antes do config.json
-            // e do .vbs: a janela só fecha quando acaba
+            // e da entrada de início: a janela só fecha quando acaba
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if INSTALLING.load(std::sync::atomic::Ordering::SeqCst) {
                     api.prevent_close();
@@ -390,8 +487,8 @@ async fn setup_info(app: AppHandle) -> Value {
             "installed": dir.join(BINARY).exists(),
             "node": node_version(),
             "nodeMin": format!("{}.{}", NODE_MIN.0, NODE_MIN.1),
-            // Ligado por padrão; desligado só quando já há instalação e o .vbs não existe
-            "startup": startup_link().is_some_and(|p| p.exists()) || !dir.join(BINARY).exists(),
+            // Ligado por padrão; desligado só quando já há instalação sem o início com o Windows
+            "startup": startup_on() || !dir.join(BINARY).exists(),
         })
     })
     .await
@@ -431,8 +528,8 @@ async fn setup_install(app: AppHandle, dir: String, startup: bool, desktop: bool
         let dir = PathBuf::from(dir);
         let shortcut = desktop_shortcut();
         let had_shortcut = shortcut.as_ref().is_some_and(|p| p.exists());
-        // A pasta de onde o aberto roda, lida antes do set_startup reescrever o .vbs. Sem .vbs (início
-        // automático desligado, aberto pelo Iniciar), a própria pasta de destino, se já tinha ele.
+        // A pasta de onde o aberto roda, lida antes do set_startup reescrever a entrada. Sem entrada
+        // (início automático desligado, aberto pelo Iniciar), a própria pasta de destino, se já tinha ele.
         let old_dir = startup_dir()
             .filter(|d| d.join("presence.mjs").is_file())
             .or_else(|| dir.join("presence.mjs").is_file().then(|| dir.clone()));
@@ -443,7 +540,7 @@ async fn setup_install(app: AppHandle, dir: String, startup: bool, desktop: bool
             let installer = std::env::temp_dir().join(format!("Quack-Presence-Install-{}.exe", std::process::id()));
             let bytes = extract(offset, len)?;
             install_from(&installer, &bytes, &[], &dir)?;
-            // Antes do set_startup, que reescreve o .vbs para a pasta nova
+            // Antes do set_startup, que aponta a entrada para a pasta nova
             carry_config(&dir)?;
             // O NSIS em silêncio sempre faz o atalho da área de trabalho
             if !desktop && !had_shortcut {
@@ -451,7 +548,7 @@ async fn setup_install(app: AppHandle, dir: String, startup: bool, desktop: bool
                     let _ = fs::remove_file(p);
                 }
             }
-            set_startup(&dir, startup).map(|_| ())
+            set_startup(&dir.join(BINARY), startup).map(|_| ())
         })();
         // Falhou com o Quack Presence fechado por nós: o de antes abre de novo, para o card não sumir
         if result.is_err() && was_running {
@@ -609,10 +706,43 @@ mod tests {
     }
 
     #[test]
-    fn the_startup_script_runs_presence_from_the_folder() {
-        let s = startup_script(Path::new(r"C:\Users\Zé\AppData\Local\Quack Presence"));
-        assert!(s.contains(r#"dir = "C:\Users\Zé\AppData\Local\Quack Presence""#), "{s}");
-        assert!(s.contains(r#"\presence.mjs"#));
+    fn the_run_command_opens_the_exe_and_reads_back() {
+        let exe = Path::new(r"C:\Users\Zé\AppData\Local\Quack Presence\quack-presence-tray.exe");
+        let command = run_command(exe);
+        assert_eq!(command, r#""C:\Users\Zé\AppData\Local\Quack Presence\quack-presence-tray.exe""#);
+        assert_eq!(exe_from_command(&command).as_deref(), Some(exe));
+        assert_eq!(exe_from_command(r"C:\x\a.exe --flag").as_deref(), Some(Path::new(r"C:\x\a.exe")));
+        assert_eq!(exe_from_command(r#""C:\sem fim"#), None);
+        assert_eq!(exe_from_command(""), None);
+    }
+
+    /// Manual (mexe na chave Run de verdade e termina com ela ligada para a cópia instalada): o
+    /// botão desliga e liga a entrada, e o desligado do Gerenciador de Tarefas conta como desligado.
+    #[test]
+    #[ignore]
+    fn the_button_turns_the_run_entry_off_and_on() {
+        let exe = default_dir().join(BINARY);
+        assert!(exe.exists(), "sem cópia instalada em {}", exe.display());
+        assert_eq!(set_startup(&exe, false), Ok(false));
+        assert_eq!(run_value(), None);
+        assert_eq!(approved(APPROVED_RUN, RUN_NAME), None);
+        assert_eq!(set_startup(&exe, true), Ok(true));
+        assert_eq!(run_value(), Some(run_command(&exe)));
+        assert_eq!(approved(APPROVED_RUN, RUN_NAME), Some(APPROVED_ON.to_vec()));
+        assert_eq!(startup_dir().map(|d| d.canonicalize().unwrap()), Some(default_dir().canonicalize().unwrap()));
+        enable(&exe, &[3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+        assert!(!startup_on(), "desligada no Gerenciador de Tarefas");
+        assert_eq!(set_startup(&exe, true), Ok(true));
+        assert!(legacy_script().is_some_and(|p| !p.exists()));
+    }
+
+    #[test]
+    fn task_manager_off_is_an_odd_first_byte() {
+        assert!(!disabled(None));
+        assert!(!disabled(Some(APPROVED_ON.to_vec())));
+        assert!(!disabled(Some(vec![6, 0, 0, 0])));
+        assert!(disabled(Some(vec![3, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8])));
+        assert!(disabled(Some(vec![7])));
     }
 
     /// Manual (fecha o Quack Presence aberto): um node que segura a trava e ignora o "quit", como
@@ -639,8 +769,11 @@ mod tests {
     fn the_old_folder_is_read_from_the_startup_script() {
         let old = "' Inicia o Quack Presence sem janela.\r\ndir = \"E:\\Documents\\Dev\\Quack Presence\"\r\nCreateObject(...)\r\n";
         assert_eq!(dir_from_script(old), Some(PathBuf::from(r"E:\Documents\Dev\Quack Presence")));
-        let new = startup_script(Path::new(r"C:\Users\Zé\AppData\Local\Quack Presence"));
-        assert_eq!(dir_from_script(&new), Some(PathBuf::from(r"C:\Users\Zé\AppData\Local\Quack Presence")));
+        // O que a 1.1.2 escrevia
+        let v112 = "' Inicia o Quack Presence sem janela. Escrito pelo botão \"Iniciar com o Windows\".\r\n\
+                    dir = \"C:\\Users\\Zé\\AppData\\Local\\Quack Presence\"\r\n\
+                    CreateObject(\"WScript.Shell\").Run \"node --no-warnings \"\"\" & dir & \"\\presence.mjs\"\"\", 0, False\r\n";
+        assert_eq!(dir_from_script(v112), Some(PathBuf::from(r"C:\Users\Zé\AppData\Local\Quack Presence")));
         assert_eq!(dir_from_script("nada aqui"), None);
     }
 

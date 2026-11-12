@@ -176,7 +176,7 @@ fn build_view(dir: &Path) -> Value {
         .filter(Value::is_object);
     view["configOk"] = json!(config.is_some());
     view["config"] = config.unwrap_or(Value::Null);
-    view["iniciarComWindows"] = json!(setup::startup_link().is_some_and(|p| p.exists()));
+    view["iniciarComWindows"] = json!(setup::startup_on());
     // Os projetos do T3 que o presence.mjs leu, para a lista de projetos das configurações
     view["projetos"] = status
         .as_ref()
@@ -250,10 +250,11 @@ fn reconnect(app: AppHandle) {
     refresh_soon(app);
 }
 
-/** O .vbs escrito para a pasta deste presence.mjs: a cópia instalada ou o checkout de dev */
+/** A chave Run abrindo este exe: o da cópia instalada ou o build do checkout de dev */
 #[tauri::command]
-fn set_startup(app: AppHandle, enabled: bool) -> Result<bool, String> {
-    setup::set_startup(&app.state::<Shared>().dir, enabled)
+fn set_startup(enabled: bool) -> Result<bool, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    setup::set_startup(&exe, enabled)
 }
 
 /** O botão Atualizar do painel: instala a versão achada agora, com o automático desligado */
@@ -653,6 +654,11 @@ fn main() {
     }
     setup::clean_up();
     let dir = dir_from_args(&args);
+    if setup::is_installed(&dir) {
+        if let Ok(exe) = std::env::current_exe() {
+            setup::migrate_startup(&dir, &exe);
+        }
+    }
     let shared = Shared {
         installed: setup::is_installed(&dir),
         update: Mutex::new(None),
