@@ -357,10 +357,17 @@ fn show_settings(app: AppHandle) {
     show_settings_window(&app);
 }
 
-/** O Esc e o Cancelar das janelas: escondem pelo hide() daqui, que também para o WebView2 */
+/**
+ * O Esc e o Cancelar das janelas: o painel se esconde pelo hide() daqui, que também para o WebView2;
+ * as configurações são destruídas (ver show_settings_window)
+ */
 #[tauri::command]
 fn hide_window(window: WebviewWindow) {
-    hide(&window);
+    if window.label() == "settings" {
+        let _ = window.destroy();
+    } else {
+        hide(&window);
+    }
 }
 
 /**
@@ -395,7 +402,46 @@ fn quit(app: AppHandle) {
     app.exit(0);
 }
 
+/**
+ * A pasta do WebView2 das duas janelas. Elas rodam com --disable-gpu (additionalBrowserArgs no
+ * tauri.conf.json), e o WebView2 recusa abrir com argumentos diferentes numa pasta que outro
+ * processo usa: uma versão antiga ainda fechando (ou a instalada, ao lado de um build de dev)
+ * derrubava a nova na abertura com 0x8007139F. Uma pasta só desta configuração nunca é dividida
+ * com versões de antes dela. Se os argumentos mudarem de novo, o nome da pasta muda junto.
+ */
+const WEBVIEW_DIR: &str = "webview-sem-gpu";
+
+/** Cria uma janela do tauri.conf.json (as duas têm "create": false) na pasta WEBVIEW_DIR */
+fn build_window(app: &AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == label)
+        .cloned()
+        .ok_or_else(|| tauri::Error::WindowNotFound)?;
+    let dir = app.path().app_local_data_dir()?.join(WEBVIEW_DIR);
+    tauri::WebviewWindowBuilder::from_config(app, &config)?.data_directory(dir).build()
+}
+
+/**
+ * As configurações só existem enquanto abertas: a janela nasce aqui (tauri.conf.json tem
+ * "create": false) e é destruída ao fechar. Escondida, ela mantinha um processo do WebView2 com
+ * uns 44 MB (medido em 12/11/26, proto/README.md); criada no clique, aparece em 0,6 s.
+ */
 fn show_settings_window(app: &AppHandle) {
+    if app.get_webview_window("settings").is_none() {
+        // Criar um WebView dentro de um comando síncrono ou do evento do ícone trava a thread
+        // principal no Windows: a criação vai para outra thread, que depois mostra a janela
+        let app = app.clone();
+        thread::spawn(move || {
+            if build_window(&app, "settings").is_ok() {
+                show_settings_window(&app);
+            }
+        });
+        return;
+    }
     if let Some(window) = app.get_webview_window("settings") {
         let _ = app.emit_to("settings", "settings-shown", ());
         show(&window);
@@ -541,6 +587,22 @@ fn dir_from_args(args: &[String]) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_share_the_webview2_arguments_and_settings_is_created_on_demand() {
+        let conf: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let windows = conf["app"]["windows"].as_array().unwrap();
+        let args: Vec<&str> = windows.iter().map(|w| w["additionalBrowserArgs"].as_str().unwrap_or("")).collect();
+        // Janelas com argumentos diferentes não dividem o mesmo WebView2: a segunda não abriria.
+        // Sem GPU o painel desenha igual e o WebView2 gasta ~40 MB a menos (proto/README.md);
+        // o --disable-features é o padrão que o wry usa quando não há argumentos.
+        assert!(args.iter().all(|a| *a == args[0]), "argumentos diferentes entre as janelas: {args:?}");
+        assert!(args[0].contains("--disable-gpu") && args[0].contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"));
+        // As duas nascem por build_window, na pasta WEBVIEW_DIR; as configurações só no clique
+        for w in windows {
+            assert_eq!(w["create"], false, "{} nasceria fora de build_window", w["label"]);
+        }
+    }
 
     #[test]
     fn tray_panel_sits_above_a_bottom_taskbar_and_stays_on_screen() {
@@ -731,6 +793,8 @@ fn main() {
             thread::spawn(move || parent_watch(handle));
             let handle = app.handle().clone();
             thread::spawn(move || update_loop(handle));
+            // O painel nasce agora, pelo código, para usar a pasta do WebView2 de build_window
+            build_window(app.handle(), "tray")?;
             // As janelas nascem escondidas (tauri.conf.json), mas o WebView2 delas nasce visível
             for window in app.webview_windows().values() {
                 hide(window);
@@ -741,13 +805,8 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| match (window.label(), event) {
-            // Fechar a janela só a esconde; sair fica no painel
-            ("settings", WindowEvent::CloseRequested { api, .. }) => {
-                api.prevent_close();
-                if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
-                    hide(&webview);
-                }
-            }
+            // Fechar as configurações destrói a janela (show_settings_window cria outra); o painel não
+            // fecha, só se esconde ao perder o foco, e sair fica nele
             ("tray", WindowEvent::Focused(false)) => {
                 if window.is_visible().unwrap_or(false) {
                     if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
