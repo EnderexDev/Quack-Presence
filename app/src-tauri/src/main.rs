@@ -168,12 +168,17 @@ fn build_view(dir: &Path) -> Value {
     let status = read_json(&dir.join("presence.status.json"));
     let mut view = status_view(status.as_ref(), now_ms());
     let config_text = fs::read_to_string(dir.join("config.json"));
-    let config = config_text
+    let mut config = config_text
         .as_ref()
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')).ok())
         // Um JSON válido que não é objeto (null, uma lista) também não serve de config
         .filter(Value::is_object);
+    // As chaves vêm na ordem do arquivo (preserve_order, Cargo.toml): os modos aparecem como foram
+    // escritos. Os projetos seguem em ordem alfabética, como sempre estiveram na lista das configurações.
+    if let Some(projetos) = config.as_mut().and_then(|c| c.get_mut("projetos")).and_then(Value::as_object_mut) {
+        projetos.sort_keys();
+    }
     view["configOk"] = json!(config.is_some());
     view["config"] = config.unwrap_or(Value::Null);
     view["iniciarComWindows"] = json!(setup::startup_on());
@@ -240,8 +245,18 @@ fn auto_update_on(view: &Value) -> bool {
 /** Um pedaço do config.json: quem grava é o presence.mjs, trocando só os valores no texto */
 #[tauri::command]
 fn send_config(app: AppHandle, patch: Map<String, Value>) {
-    send(&app, &format!("config {}", Value::Object(patch)));
+    send(&app, &config_line(patch));
     refresh_soon(app);
+}
+
+/**
+ * A linha do comando config, com as chaves em ordem alfabética como antes do preserve_order: o
+ * patchText do presence.mjs insere as chaves que faltam no arquivo na ordem em que chegam.
+ */
+fn config_line(patch: Map<String, Value>) -> String {
+    let mut patch = Value::Object(patch);
+    patch.sort_all_objects();
+    format!("config {patch}")
 }
 
 #[tauri::command]
@@ -511,10 +526,18 @@ fn refresh(app: &AppHandle) {
         let _ = tray.set_tooltip(Some(tooltip_for(&view)));
     }
     let mut last = shared.view.lock().unwrap();
-    if *last != view {
+    if !same_view(&last, &view) {
         *last = view.clone();
         let _ = app.emit("view", view);
     }
+}
+
+/**
+ * Igual pelo texto, ordem das chaves inclusa: o == do serde_json com preserve_order ignora a ordem,
+ * e os modos reordenados no config.json com o app aberto não chegariam ao painel
+ */
+fn same_view(a: &Value, b: &Value) -> bool {
+    serde_json::to_string(a).ok() == serde_json::to_string(b).ok()
 }
 
 fn poll_loop(app: AppHandle) {
@@ -730,6 +753,51 @@ mod tests {
             assert_eq!(build_view(&dir)["configOk"], ok, "{text}");
         }
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_card_modes_keep_the_order_of_config_json() {
+        // Uma pasta só deste teste: os testes rodam em threads do mesmo processo
+        let dir = std::env::temp_dir().join(format!("t3p-order-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        // Nem a ordem alfabética nem a do config.json do repo
+        let config = r#"{
+            "modoAtivo": "normal",
+            "modos": { "normal": { "linha1": "n" }, "completo": { "linha1": "c" }, "discreto": { "linha1": "d" } },
+            "projetos": { "Zeta": { "ignorar": true }, "Alfa": { "privado": true } }
+        }"#;
+        fs::write(dir.join("config.json"), config).unwrap();
+        let view = build_view(&dir);
+        let _ = fs::remove_dir_all(&dir);
+
+        let modos: Vec<&str> = view["config"]["modos"].as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(modos, ["normal", "completo", "discreto"], "o painel e as configurações mostram os modos nesta ordem");
+        // O texto é o que chega à página (o Object.keys do tray.js e do settings.js segue ele)
+        let text = serde_json::to_string(&view).unwrap();
+        let at = |key: &str| text.find(&format!("\"{key}\":{{")).unwrap();
+        assert!(at("normal") < at("completo") && at("completo") < at("discreto"), "{text}");
+        // Os projetos ficam como antes, em ordem alfabética: a lista das configurações não muda
+        let projetos: Vec<&str> = view["config"]["projetos"].as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(projetos, ["Alfa", "Zeta"]);
+
+        // Os modos reordenados no arquivo com o app aberto mudam o que as janelas recebem
+        let mut swapped = view.clone();
+        let modos = swapped["config"]["modos"].as_object_mut().unwrap();
+        let normal = modos.shift_remove("normal").unwrap();
+        modos.insert("normal".into(), normal);
+        assert!(!same_view(&view, &swapped), "a troca de ordem não chegaria ao painel");
+        assert!(same_view(&view, &view.clone()));
+    }
+
+    #[test]
+    fn the_config_line_keeps_its_keys_sorted() {
+        // A ordem do clique (o settings.js manda os campos mexidos nessa ordem) não chega ao config.json
+        let patch: Map<String, Value> =
+            serde_json::from_str(r#"{"tipo":"auto","modoAtivo":"x","projetos":{"Zeta":{"privado":true,"ignorar":false},"Alfa":{"ignorar":true}}}"#).unwrap();
+        assert_eq!(
+            config_line(patch),
+            r#"config {"modoAtivo":"x","projetos":{"Alfa":{"ignorar":true},"Zeta":{"ignorar":false,"privado":true}},"tipo":"auto"}"#
+        );
     }
 
     #[test]
