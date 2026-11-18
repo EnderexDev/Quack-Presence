@@ -65,6 +65,12 @@ const base = `{
   const out = patchText(text, { projetos: { A: { ignorar: true } } });
   check("strings com chaves e aspas não confundem", out === `{ "x": "a { b } \\" c", "projetos": { "A": { "ignorar": true } } }`, out);
 }
+{
+  // Um projeto do T3 chamado "__proto__": o patch chega pelo JSON.parse da linha, com a chave própria
+  const out = patchText(`{ "projetos": { "A": {} } }`, JSON.parse('{"projetos":{"__proto__":{"privado":true}}}'));
+  const p = JSON.parse(out).projetos;
+  check("projeto __proto__ vira chave, sem tocar o protótipo", Object.hasOwn(p, "__proto__") && p.__proto__.privado === true && ({}).privado === undefined, out);
+}
 
 // Card: banco falso com dois projetos, o mais recente escondido ou privado.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "t3p-proj-"));

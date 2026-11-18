@@ -98,13 +98,17 @@ function inline(value) {
 function patchText(text, patch) {
   const want = JSON.parse(text);
   const leaves = [];
+  // Só chaves próprias, gravadas como próprias: um projeto chamado "__proto__" não pode ler nem
+  // trocar o protótipo (gravava privado em todo objeto do processo)
+  const set = (o, k, v) => Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
   const walk = (obj, into, keys) => {
     for (const [k, v] of Object.entries(obj)) {
       if (v && typeof v === "object" && !Array.isArray(v)) {
-        if (!into[k] || typeof into[k] !== "object" || Array.isArray(into[k])) into[k] = {};
-        walk(v, into[k], [...keys, k]);
+        let next = Object.hasOwn(into, k) ? into[k] : undefined;
+        if (!next || typeof next !== "object" || Array.isArray(next)) set(into, k, (next = {}));
+        walk(v, next, [...keys, k]);
       } else {
-        into[k] = v;
+        set(into, k, v);
         leaves.push([[...keys, k], v]);
       }
     }

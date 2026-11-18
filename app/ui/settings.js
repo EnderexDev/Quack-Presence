@@ -33,16 +33,18 @@ function icon(name) {
 let view = {};
 /** O formulário em edição; recarregado do config.json a cada vez que a janela abre */
 let draft = null;
-/** Os projetos como estão no config.json, com o que esta janela já salvou (o view chega depois) */
-let saved = {};
-/** O formulário como abriu (ou como foi salvo por último): Salvar só manda o que mudou desde ele */
-let loaded = null;
-/** Os salvamentos em fila: um segundo clique espera o primeiro, e o último valor é o que fica */
+/**
+ * A base desta abertura da janela: o arquivo como ela leu (loaded, os valores crus do config.json)
+ * e os projetos dele (saved), com o que esta janela já gravou por cima. Uma janela reaberta ganha
+ * outra; um salvamento antigo ainda na fila só mexe na dele.
+ */
+let session = { loaded: null, saved: {} };
+/** Os salvamentos em fila: cada um compara com a base que o anterior deixou */
 let saving = Promise.resolve();
 /** A aba aberta (índice de ABAS) */
 let tab = 0;
 
-/** Um número fora do intervalo vai para a ponta mais próxima (1e400 vira o máximo); texto, ao anterior */
+/** Um número fora do intervalo vai para a ponta mais próxima; o que não é número, ao anterior */
 function num(value, fallback, min, max) {
   const n = value === null || value === "" ? NaN : Number(value);
   return Math.min(max, Math.max(min, Number.isNaN(n) ? fallback : Math.round(n)));
@@ -53,14 +55,17 @@ function put(obj, key, value) {
   Object.defineProperty(obj, key, { value, enumerable: true, writable: true, configurable: true });
   return obj;
 }
+/** Lê só uma chave própria: um projeto "__proto__" ausente não devolve o protótipo */
+const own = (obj, key) => (obj && Object.hasOwn(obj, key) ? obj[key] : undefined);
 
 function loadDraft() {
   const cfg = view.config ?? {};
-  saved = structuredClone(cfg.projetos ?? {});
+  const modos = cfg.modos ?? {};
   const mostrar = {};
   for (const [key, , padrao] of CAMPOS) mostrar[key] = cfg.mostrar?.[key] ?? padrao;
   draft = {
-    modoAtivo: cfg.modos?.[cfg.modoAtivo] ? cfg.modoAtivo : (Object.keys(cfg.modos ?? {})[0] ?? ""),
+    // O mesmo modo que o presence.mjs usa (buildActivity): o ativo, senão o discreto
+    modoAtivo: own(modos, cfg.modoAtivo) ? cfg.modoAtivo : own(modos, "discreto") ? "discreto" : (Object.keys(modos)[0] ?? ""),
     mostrar,
     tipo: TIPOS.includes(cfg.tipo) ? cfg.tipo : "auto",
     quandoOcioso: cfg.quandoOcioso === "mostrar" ? "mostrar" : "esconder",
@@ -69,20 +74,34 @@ function loadDraft() {
     intervaloSegundos: num(cfg.intervaloSegundos, 5, 3, 3600),
     seguirUltimaMensagem: cfg.seguirUltimaMensagem !== false,
     iniciar: Boolean(view.iniciarComWindows),
-    projetos: Object.fromEntries(projectNames().map((nome) => [nome, projectState(nome)])),
+    projetos: {},
   };
-  loaded = structuredClone(draft);
+  for (const nome of projectNames()) put(draft.projetos, nome, projectState(nome));
+  // A base são os valores crus: um valor que o formulário corrigiu (um tipo que não existe, um
+  // número fora do intervalo) conta como mudado, e Salvar grava o que a janela mostra
+  const rawMostrar = {};
+  for (const [key] of CAMPOS) rawMostrar[key] = cfg.mostrar?.[key];
+  session = {
+    saved: structuredClone(cfg.projetos ?? {}),
+    loaded: {
+      modoAtivo: cfg.modoAtivo, mostrar: rawMostrar, tipo: cfg.tipo, quandoOcioso: cfg.quandoOcioso,
+      ociosoMinutos: cfg.ociosoMinutos, ausenteMinutos: cfg.ausenteMinutos, intervaloSegundos: cfg.intervaloSegundos,
+      seguirUltimaMensagem: cfg.seguirUltimaMensagem, iniciar: Boolean(view.iniciarComWindows),
+    },
+  };
 }
 
-/** Os campos que o formulário mudou desde que abriu; em "mostrar", só os interruptores mexidos */
-function formPatch() {
+/** Os campos de um retrato do formulário que diferem da base; em "mostrar", só os interruptores */
+function formPatch(form, base) {
   const patch = {};
-  for (const [key, value] of Object.entries(draft)) {
+  for (const [key, value] of Object.entries(form)) {
     if (key === "iniciar" || key === "projetos") continue;
+    // Sem modos no config não há o que escolher: o modoAtivo do arquivo fica
+    if (key === "modoAtivo" && !value) continue;
     if (key === "mostrar") {
-      const changed = Object.entries(value).filter(([k, v]) => v !== loaded.mostrar[k]);
+      const changed = Object.entries(value).filter(([k, v]) => v !== base.mostrar[k]);
       if (changed.length) patch.mostrar = Object.fromEntries(changed);
-    } else if (value !== loaded[key]) patch[key] = value;
+    } else if (value !== base[key]) patch[key] = value;
   }
   return patch;
 }
@@ -93,6 +112,9 @@ function addNewProjects() {
   for (const nome of projectNames()) {
     if (Object.hasOwn(draft.projetos, nome)) continue;
     put(draft.projetos, nome, projectState(nome));
+    // A base ganha o projeto como o arquivo tem agora: sem edição, ele não vai no próximo Salvar
+    const p = own(view.config?.projetos, nome);
+    if (p && !Object.hasOwn(session.saved, nome)) put(session.saved, nome, structuredClone(p));
     added = true;
   }
   return added;
@@ -107,15 +129,15 @@ function projectNames() {
 
 /** Como o presence.mjs trata o projeto: ignorar vence privado */
 function projectState(nome) {
-  const p = view.config?.projetos?.[nome] ?? {};
+  const p = own(view.config?.projetos, nome) ?? {};
   return p.ignorar === true ? "esconder" : p.privado === true ? "privado" : "mostrar";
 }
 
 /** Só as chaves que mudaram, para o config.json não ganhar "false" em todo projeto */
-function projectPatch() {
+function projectPatch(projetos, saved) {
   const patch = {};
-  for (const [nome, state] of Object.entries(draft.projetos)) {
-    const p = saved[nome] ?? {};
+  for (const [nome, state] of Object.entries(projetos)) {
+    const p = own(saved, nome) ?? {};
     const ignorar = state === "esconder";
     // Esconder não mexe no privado
     const privado = state === "esconder" ? p.privado === true : state === "privado";
@@ -140,7 +162,9 @@ function template(text) {
 }
 
 function preview() {
-  const modo = view.config?.modos?.[draft.modoAtivo] ?? {};
+  // A mesma reserva do presence.mjs (buildActivity): o modo escolhido, o discreto, ou só "Programando"
+  const modos = view.config?.modos;
+  const modo = own(modos, draft.modoAtivo) || own(modos, "discreto") || { linha1: "Programando" };
   return h("div", { class: "presence", id: "preview" },
     h("img", { src: "capivara.png", alt: "" }),
     h("div", { class: "lines" },
@@ -314,26 +338,31 @@ function save() {
   if (!draft || !view.configOk) return saving;
   // Um número digitado ainda sem change entra também
   document.activeElement?.blur();
-  // O pedido sai com o formulário deste clique. Só o que mudou desde que a janela abriu: um campo
-  // não mexido aqui (o modo trocado pela bandeja com esta janela aberta) fica como está no arquivo
-  const patch = formPatch();
-  const projetosPatch = projectPatch();
-  if (Object.keys(projetosPatch).length) patch.projetos = projetosPatch;
-  const { iniciar } = draft;
-  const base = loaded;
+  // Um retrato do formulário deste clique e a base desta abertura da janela. O patch só se calcula
+  // na vez dele na fila, contra a base que os salvamentos anteriores deixaram: salvar B e logo
+  // depois voltar para A e salvar grava A. Só vai o que difere do arquivo, então um campo não
+  // mexido aqui (o modo trocado pela bandeja com esta janela aberta) fica como está nele.
+  const form = structuredClone(draft);
+  const s = session;
   saving = saving.then(async () => {
+    const patch = formPatch(form, s.loaded);
+    const projetosPatch = projectPatch(form.projetos, s.saved);
+    if (Object.keys(projetosPatch).length) patch.projetos = projetosPatch;
     try {
-      if (Object.keys(patch).length) await call("send_config", { patch });
-      for (const [nome, change] of Object.entries(projetosPatch)) put(saved, nome, { ...(Object.hasOwn(saved, nome) ? saved[nome] : {}), ...change });
-      // O que foi gravado vira a base do próximo Salvar (se a janela não reabriu no meio)
-      if (base === loaded) {
+      if (Object.keys(patch).length) {
+        await call("send_config", { patch });
+        // Gravado: vira a base do próximo. Uma falha deixa a base como estava, e o próximo reenvia.
         for (const [key, value] of Object.entries(patch)) {
-          if (key === "mostrar") Object.assign(base.mostrar, value);
-          else if (key !== "projetos") base[key] = value;
+          if (key === "mostrar") Object.assign(s.loaded.mostrar, value);
+          else if (key !== "projetos") s.loaded[key] = value;
         }
+        for (const [nome, change] of Object.entries(projetosPatch)) put(s.saved, nome, { ...(own(s.saved, nome) ?? {}), ...change });
       }
-      // Sempre: o estado em view pode estar um ciclo atrás de um salvar anterior; repetir não muda nada
-      await call("set_startup", { enabled: iniciar });
+      // Só quando o interruptor difere: um Salvar sem mexer nele não regrava a inicialização
+      if (form.iniciar !== s.loaded.iniciar) {
+        await call("set_startup", { enabled: form.iniciar });
+        s.loaded.iniciar = form.iniciar;
+      }
       toast("Salvo");
     } catch {
       // o toast de erro já saiu
