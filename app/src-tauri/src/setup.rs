@@ -471,7 +471,8 @@ pub fn run(mut context: tauri::Context<tauri::Wry>, mode: Mode) {
                 .maximizable(false)
                 .decorations(false)
                 .center()
-                .background_color(tauri::window::Color(13, 11, 8, 255))
+                // O --bg do base.css (#0a0a0c): a janela abre na cor da página, sem piscar
+                .background_color(tauri::window::Color(10, 10, 12, 255))
                 .data_directory(data)
                 .build()?;
             Ok(())
