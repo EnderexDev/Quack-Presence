@@ -35,12 +35,23 @@ let view = {};
 let draft = null;
 /** Os projetos como estão no config.json, com o que esta janela já salvou (o view chega depois) */
 let saved = {};
+/** O formulário como abriu (ou como foi salvo por último): Salvar só manda o que mudou desde ele */
+let loaded = null;
+/** Os salvamentos em fila: um segundo clique espera o primeiro, e o último valor é o que fica */
+let saving = Promise.resolve();
 /** A aba aberta (índice de ABAS) */
 let tab = 0;
 
+/** Um número fora do intervalo vai para a ponta mais próxima (1e400 vira o máximo); texto, ao anterior */
 function num(value, fallback, min, max) {
   const n = value === null || value === "" ? NaN : Number(value);
-  return Math.min(max, Math.max(min, Number.isFinite(n) ? Math.round(n) : fallback));
+  return Math.min(max, Math.max(min, Number.isNaN(n) ? fallback : Math.round(n)));
+}
+
+/** Grava uma chave própria mesmo com o nome "__proto__" (um projeto pode se chamar assim) */
+function put(obj, key, value) {
+  Object.defineProperty(obj, key, { value, enumerable: true, writable: true, configurable: true });
+  return obj;
 }
 
 function loadDraft() {
@@ -60,6 +71,31 @@ function loadDraft() {
     iniciar: Boolean(view.iniciarComWindows),
     projetos: Object.fromEntries(projectNames().map((nome) => [nome, projectState(nome)])),
   };
+  loaded = structuredClone(draft);
+}
+
+/** Os campos que o formulário mudou desde que abriu; em "mostrar", só os interruptores mexidos */
+function formPatch() {
+  const patch = {};
+  for (const [key, value] of Object.entries(draft)) {
+    if (key === "iniciar" || key === "projetos") continue;
+    if (key === "mostrar") {
+      const changed = Object.entries(value).filter(([k, v]) => v !== loaded.mostrar[k]);
+      if (changed.length) patch.mostrar = Object.fromEntries(changed);
+    } else if (value !== loaded[key]) patch[key] = value;
+  }
+  return patch;
+}
+
+/** Projetos que o T3 mostrou depois da janela abrir entram na lista; os já na lista ficam como estão */
+function addNewProjects() {
+  let added = false;
+  for (const nome of projectNames()) {
+    if (Object.hasOwn(draft.projetos, nome)) continue;
+    put(draft.projetos, nome, projectState(nome));
+    added = true;
+  }
+  return added;
 }
 
 /** Os projetos do T3 e os do config.json escondidos ou privados (um que saiu do T3 ainda volta) */
@@ -86,7 +122,7 @@ function projectPatch() {
     const change = {};
     if (ignorar !== (p.ignorar === true)) change.ignorar = ignorar;
     if (privado !== (p.privado === true)) change.privado = privado;
-    if (Object.keys(change).length) patch[nome] = change;
+    if (Object.keys(change).length) put(patch, nome, change);
   }
   return patch;
 }
@@ -143,13 +179,16 @@ function number(key, min, max, hint) {
     class: "num", type: "number", min, max, value: draft[key], "aria-label": key,
     onchange: (event) => {
       const typed = event.target.value === "" ? NaN : Number(event.target.value);
+      // O campo de número entrega vazio para o que não sabe ler (1e400, um "-" sozinho) e marca badInput
+      const bad = event.target.validity.badInput;
       draft[key] = num(event.target.value, draft[key], min, max);
       event.target.value = draft[key];
       const sub = event.target.closest(".field")?.querySelector(".sub");
-      // Só fora do intervalo: arredondar ou voltar um campo vazio ao anterior não precisa de aviso
-      const fixed = Number.isFinite(typed) && (typed < min || typed > max);
+      // Só fora do intervalo ou ilegível: arredondar ou esvaziar o campo volta sem aviso
+      const out = !Number.isNaN(typed) && (typed < min || typed > max);
+      const fixed = out || bad;
       if (sub) {
-        sub.textContent = fixed ? `Ajustado para ${draft[key]}: vai de ${min} a ${max}` : hint ?? "";
+        sub.textContent = out ? `Ajustado para ${draft[key]}: vai de ${min} a ${max}` : bad ? `Número inválido: voltou para ${draft[key]}` : hint ?? "";
         sub.classList.toggle("fix", fixed);
         sub.classList.toggle("hidden", !fixed && !hint);
       }
@@ -270,23 +309,37 @@ function render() {
   if (scroll) scroll.scrollTop = scrollTop;
 }
 
-async function save() {
+function save() {
   // Na tela de JSON inválido (ou antes do primeiro estado) não há formulário para salvar
-  if (!draft || !view.configOk) return;
+  if (!draft || !view.configOk) return saving;
   // Um número digitado ainda sem change entra também
   document.activeElement?.blur();
-  const { iniciar, projetos, ...patch } = draft;
+  // O pedido sai com o formulário deste clique. Só o que mudou desde que a janela abriu: um campo
+  // não mexido aqui (o modo trocado pela bandeja com esta janela aberta) fica como está no arquivo
+  const patch = formPatch();
   const projetosPatch = projectPatch();
   if (Object.keys(projetosPatch).length) patch.projetos = projetosPatch;
-  try {
-    await call("send_config", { patch });
-    for (const [nome, change] of Object.entries(projetosPatch)) saved[nome] = { ...saved[nome], ...change };
-    // Sempre: o estado em view pode estar um ciclo atrás de um salvar anterior; repetir não muda nada
-    await call("set_startup", { enabled: iniciar });
-    toast("Salvo");
-  } catch {
-    // o toast de erro já saiu
-  }
+  const { iniciar } = draft;
+  const base = loaded;
+  saving = saving.then(async () => {
+    try {
+      if (Object.keys(patch).length) await call("send_config", { patch });
+      for (const [nome, change] of Object.entries(projetosPatch)) put(saved, nome, { ...(Object.hasOwn(saved, nome) ? saved[nome] : {}), ...change });
+      // O que foi gravado vira a base do próximo Salvar (se a janela não reabriu no meio)
+      if (base === loaded) {
+        for (const [key, value] of Object.entries(patch)) {
+          if (key === "mostrar") Object.assign(base.mostrar, value);
+          else if (key !== "projetos") base[key] = value;
+        }
+      }
+      // Sempre: o estado em view pode estar um ciclo atrás de um salvar anterior; repetir não muda nada
+      await call("set_startup", { enabled: iniciar });
+      toast("Salvo");
+    } catch {
+      // o toast de erro já saiu
+    }
+  });
+  return saving;
 }
 
 function close() {
@@ -305,10 +358,15 @@ await start((next) => {
   // Com o formulário aberto, um estado novo só troca o selo, o nome do app e a prévia (o tipo do
   // auto): redesenhar tudo apagaria o que está sendo digitado
   const old = document.getElementById("pill");
+  // O config.json voltou de inválido: o arquivo pode ter mudado à mão, então o formulário recomeça dele
+  if (wasOk === false && view.configOk) draft = null;
   if (draft && wasOk && view.configOk && old) {
     old.replaceWith(pill());
     document.getElementById("app").textContent = view.app || "StarX Studio";
     document.getElementById("preview")?.replaceWith(preview());
+    // Projetos que o T3 mostrou agora: na aba Projetos (sem campo de texto) a lista redesenha;
+    // nas outras eles só entram no rascunho e aparecem ao abrir a aba
+    if (addNewProjects() && tab === 2) render();
   } else render();
 });
 await listen("settings-shown", () => {
