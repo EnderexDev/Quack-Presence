@@ -31,11 +31,9 @@ body.setupbody { background: var(--bg); }
   flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center;
 }
-/* Sem sombra: sobre o fundo quase preto ela só desenhava uma mancha em volta da logo */
-.setup-logo {
-  position: relative; width: 56px; height: 56px; flex: none; margin-bottom: 12px;
-  background: url(logo.svg) center / contain no-repeat;
-}
+/* A logo (base.css .logo) maior. Sem sombra: sobre o fundo quase preto ela só desenhava uma
+   mancha em volta da logo */
+.setup-logo { position: relative; width: 56px; height: 56px; margin-bottom: 12px; }
 /* Instalado: um visto verde no canto da logo, a cor de "funcionando" do painel (.dot.live) */
 .setup-logo::after {
   content: ""; position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px;
@@ -73,7 +71,6 @@ body.setupbody { background: var(--bg); }
 .setup-opts { flex: none; }
 /* O filete entre as linhas e o caminho que perde o começo (.path) vêm de base.css */
 .setup-row { min-height: 48px; padding: 8px 10px 8px 14px; }
-.setup-row .grow { display: flex; flex-direction: column; gap: 1px; }
 
 /* ---------- A ação: amarela, na largura do próprio texto ---------- */
 /* Sem o Node ou carregando, o Instalar fica desligado e neutro (base.css .btn.primary:disabled) */

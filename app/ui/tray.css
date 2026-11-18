@@ -17,11 +17,12 @@ body.traybody { background: transparent; }
 .now > * { padding: 0 12px; }
 /* O estado mais longo ("O programa não está respondendo") quebra em duas linhas em vez de cortar */
 .status { min-height: 44px; padding-block: 10px; font-weight: 600; font-size: 13px; line-height: 1.3; }
-#card { padding: 12px; border-top: 1px solid var(--line); }
+/* O filete acima do card e do modo é o das linhas de um .sheet (base.css) */
+#card { padding: 12px; }
 /* O erro no lugar do card: alinhado com o texto do estado, logo abaixo dele */
 #card:has(> .note) { padding: 0 12px 12px 30px; border-top: 0; margin-top: -6px; }
 #card .note { margin: 0; font-size: 12.5px; color: var(--muted); }
-#modes { padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+#modes { padding: 10px 12px 12px; }
 #modes .label { display: block; margin: 0 0 8px 2px; }
 /* Os modos ficam sempre numa linha só: o .seg de base.css quebra linha, aqui não. Até três, os
    botões são os de base.css (larguras iguais). Com quatro ou mais (.many, tray.js) cada botão
@@ -35,7 +36,6 @@ body.traybody { background: transparent; }
 #modes .seg.crowded button { padding: 0 3px; font-size: 11.5px; }
 
 .upd { padding: 10px 12px; min-height: 52px; }
-.upd .grow { display: flex; flex-direction: column; gap: 1px; }
 
 /* Configurações à esquerda; reconectar, os dois arquivos e sair à direita */
 .actions { display: flex; align-items: center; gap: 2px; padding: 2px 0 0; }

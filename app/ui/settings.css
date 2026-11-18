@@ -15,7 +15,7 @@
   font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap;
 }
 .pill.live { color: var(--text); }
-.pill.bad { color: #ffb3b0; }
+.pill.bad { color: var(--danger-text); }
 
 /* ---------- Abas (o índice das configurações do Quackify, deitado) ---------- */
 .tabs { display: flex; gap: 4px; padding: 0 16px 10px; flex: none; border-bottom: 1px solid var(--line); }
@@ -50,7 +50,7 @@
 .field { min-height: 52px; padding: 10px 14px; }
 .field .title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .field .sub { margin-top: 1px; }
-.field .sub.fix { color: #ffb3b0; }
+.field .sub.fix { color: var(--danger-text); }
 label.field { cursor: pointer; }
 
 /* Os seis campos do card em duas colunas, com a linha entre elas */

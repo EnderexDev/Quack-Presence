@@ -26,6 +26,8 @@
   --on-accent: #1a1400;
   --green: #29d39a;
   --danger: #ff6b6b;
+  /* O vermelho claro de um texto de erro (o aviso, o selo e o valor corrigido nas configurações) */
+  --danger-text: #ffb3b0;
   /* Do Quack Time (panel/index.html): a superfície mais leve e o texto terciário */
   --surface-1: rgba(255, 255, 255, 0.04);
   --faint: #6b6861;
@@ -80,14 +82,15 @@ button:disabled { cursor: default; opacity: 0.4; }
 .hidden { display: none !important; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--muted); }
-/* Rótulo de seção (spec do Quackify: 11 em maiúsculas espaçadas) */
-.label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+/* Rótulo de seção (spec do Quackify: 11 em maiúsculas espaçadas); o tipo do card usa o mesmo */
+.label, .presence .kind { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 /* Janela sem foco ou minimizada (common.js liga a classe): nenhuma animação gasta quadro */
 body.paused *, body.paused *::before, body.paused *::after { animation-play-state: paused !important; }
 
 /* ---------- Marca: logo, nome em Fredoka dourado, StarX Studio embaixo ---------- */
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.brand .logo { width: 40px; height: 40px; flex: none; background: url(logo.svg) center / contain no-repeat; }
+.logo { flex: none; background: url(logo.svg) center / contain no-repeat; }
+.brand .logo { width: 40px; height: 40px; }
 .brand .names { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .wordmark {
   font-family: var(--logo); font-weight: 700; font-size: 21px; line-height: 1; white-space: nowrap;
@@ -108,6 +111,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .row .title { font-weight: 600; font-size: 13px; color: var(--text); }
 .row .sub { display: block; font-size: 12px; color: var(--muted); }
 .row .sub.new { color: var(--text); font-weight: 600; }
+/* O título e a dica empilhados, a 1 px um do outro */
+.stack { display: flex; flex-direction: column; gap: 1px; }
 /* Um caminho longo perde o começo, não o fim (o fim é a pasta); o caminho inteiro vai no title.
    Sem as marcas U+200E o rtl leva a pontuação das pontas para o lado errado: o \\ de uma pasta
    de rede aparecia no fim do caminho */
@@ -174,7 +179,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .presence { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .presence img { width: 60px; height: 60px; flex: none; border-radius: var(--r-sm); object-fit: cover; background: var(--bg); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
 .presence .lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.presence .kind { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.presence .kind { margin-bottom: 2px; }
 .presence b { font-size: 13.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .presence .ln { font-size: 12.5px; color: #c9c6be; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Só na prévia das configurações: o tempo do card e os {campos} do texto do modo, marcados como
@@ -191,7 +196,7 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   font-size: 12.5px; font-weight: 600; color: var(--text); text-align: center;
   animation: toast-in var(--t-mid) var(--ease-out);
 }
-.toast.bad { color: #ffb3b0; border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.toast.bad { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 @media (prefers-reduced-motion: reduce) {
   .toast { animation: none; }
