@@ -1,0 +1,93 @@
+/*
+  O instalador (setup.html), por cima de base.css. A janela é a do setup.rs: 460 x 490, sem
+  moldura e sem redimensionar. O molde é o instalador do Quackify (src/styles/components/setup.css):
+  uma barra fina para arrastar, a marca no meio, a linha de estado, as opções e uma ação só.
+  Fica de fora o que o Quackify tem e este app não leva: a aura amarela, o anel girando na logo,
+  o brilho embaixo do botão e o pulo no fim. O único movimento é a barra enquanto instala, e ela
+  some quando a instalação acaba.
+*/
+body.setupbody { background: var(--bg); }
+
+.setup { height: 100%; display: flex; flex-direction: column; }
+
+/* ---------- Barra de arrastar ---------- */
+.setup-bar {
+  display: flex; align-items: center; justify-content: space-between; flex: none;
+  height: 40px; padding: 0 6px 0 16px;
+}
+.setup-title { font-size: 12px; font-weight: 600; color: var(--muted); }
+.setup-close svg { width: 14px; height: 14px; }
+
+/* ---------- Corpo: a marca e o estado em cima, as opções e a ação embaixo ---------- */
+.setup-body {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px;
+  padding: 0 28px 22px;
+  /* Um erro muito comprido não empurra o botão para fora da janela: o corpo rola */
+  overflow-y: auto;
+}
+
+/* Instalando e pronto, sem as opções, a marca fica no meio da janela */
+.setup-hero {
+  flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+}
+/* Sem sombra: sobre o fundo quase preto ela só desenhava uma mancha em volta da logo */
+.setup-logo {
+  position: relative; width: 56px; height: 56px; flex: none; margin-bottom: 12px;
+  background: url(logo.svg) center / contain no-repeat;
+}
+/* Instalado: um visto verde no canto da logo, a cor de "funcionando" do painel (.dot.live) */
+.setup-logo::after {
+  content: ""; position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px;
+  border-radius: 50%; border: 3px solid var(--bg); box-sizing: content-box;
+  background: var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230a0a0c' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center / 14px no-repeat;
+  opacity: 0; transform: scale(0.6); transition: opacity var(--t-mid) var(--ease-out), transform var(--t-mid) var(--ease-spring);
+}
+.setup.done .setup-logo::after { opacity: 1; transform: none; }
+.setup-word { font-size: 27px; }
+/* O "StarX Studio" da marca (base.css .brand .studio), centrado */
+.setup-studio { margin-top: 5px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+.setup-line {
+  margin: 12px 0 0; max-width: 360px; min-height: 36px;
+  font-size: 13px; line-height: 1.4; color: var(--muted);
+  overflow-wrap: anywhere; text-wrap: balance;
+}
+/* O erro pode ser copiado (um caminho, um código de saída) */
+.setup-line.bad { color: var(--danger); user-select: text; cursor: text; }
+
+/* A barra enquanto o NSIS instala: ele não diz quanto falta, então uma faixa corre de lado a lado.
+   Só existe nesse estado; com a janela sem foco ela para (body.paused, base.css). */
+.setup-progress {
+  position: relative; width: 240px; height: 6px; margin-top: 8px; flex: none;
+  border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden;
+}
+.setup-progress i {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 35%;
+  border-radius: inherit; background: var(--accent);
+  animation: setup-slide 1.4s var(--ease-out) infinite;
+}
+@keyframes setup-slide { from { transform: translateX(-100%); } to { transform: translateX(286%); } }
+
+/* ---------- Opções ---------- */
+.setup-opts { flex: none; }
+.setup-row { min-height: 48px; padding: 8px 10px 8px 14px; }
+.setup-row + .setup-row { border-top: 1px solid var(--line); }
+.setup-row .grow { display: flex; flex-direction: column; gap: 1px; }
+/* O caminho longo perde o começo, não o fim: o fim é a pasta que o Trocar muda. O caminho inteiro
+   fica no title. */
+.setup-path {
+  direction: rtl; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---------- A ação: amarela, na largura do próprio texto ---------- */
+.setup-actions { flex: none; display: flex; justify-content: center; gap: 10px; min-height: 40px; }
+.setup-main { height: 40px; min-width: 148px; padding: 0 24px; font-size: 13.5px; }
+/* Sem o Node ou carregando: o amarelo apagado parecia sujo; desligado fica neutro */
+.setup-main:disabled { background: var(--surface-2); color: var(--muted); opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-progress i { animation: none; width: 100%; opacity: 0.6; }
+  .setup-logo::after { transition: none; }
+}

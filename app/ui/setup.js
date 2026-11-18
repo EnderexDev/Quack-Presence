@@ -12,13 +12,14 @@ let stage = "ready";
 let error = "";
 
 function setTog(el, on) {
-  el.className = on ? "tog" : "tog off";
+  el.classList.toggle("off", !on);
   el.setAttribute("aria-checked", String(on));
 }
 
 function render() {
   const busy = stage === "installing";
   const noNode = info && !info.node;
+  $("root").classList.toggle("done", stage === "done");
   $("close").classList.toggle("hidden", busy);
   $("dir").textContent = dir;
   $("dir").title = dir;
@@ -26,14 +27,13 @@ function render() {
   setTog($("desktop"), desktop);
   $("opts").classList.toggle("hidden", stage === "installing" || stage === "done");
   $("progress").classList.toggle("hidden", !busy);
-  $("mark").classList.toggle("busy", busy);
   $("install").classList.toggle("hidden", stage === "installing" || stage === "done");
   $("install").textContent = stage === "error" ? "Tentar de novo" : info?.installed ? `Atualizar para a ${info.version}` : "Instalar";
   $("install").disabled = !info || noNode;
   $("open").classList.toggle("hidden", stage !== "done");
 
   const line = $("line");
-  line.className = "setupline";
+  line.classList.remove("bad");
   if (!info) line.textContent = "Carregando...";
   else if (stage === "installing") line.textContent = "Instalando. O card some do Discord por uns segundos.";
   else if (stage === "done") line.textContent = `Pronto: a ${info.version} está instalada. O ícone fica na bandeja, perto do relógio.`;

@@ -3,39 +3,46 @@
 <head>
 <meta charset="utf-8">
 <title>Instalar o Quack Presence</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="setup.css">
 <script type="module" src="setup.js"></script>
 </head>
 <body class="setupbody">
   <div class="setup" id="root">
-    <header class="setupbar" data-tauri-drag-region>
-      <span class="label" data-tauri-drag-region>Instalar o Quack Presence</span>
-      <button class="setupclose" id="close" aria-label="Fechar">✕</button>
+    <header class="setup-bar" data-tauri-drag-region>
+      <span class="setup-title" data-tauri-drag-region>Instalar o Quack Presence</span>
+      <button class="icon-btn setup-close" id="close" aria-label="Fechar" title="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
     </header>
-    <main class="setupmain">
-      <div class="brand setupbrand">
-        <span class="mark" id="mark"></span>
-        <span class="word">Quack Presence</span>
+
+    <main class="setup-body">
+      <div class="setup-hero">
+        <span class="setup-logo" id="mark"></span>
+        <span class="wordmark setup-word">Quack Presence</span>
+        <span class="setup-studio">StarX Studio</span>
+        <p class="setup-line" id="line">Carregando...</p>
+        <div class="setup-progress hidden" id="progress"><i></i></div>
       </div>
-      <p class="setupline" id="line">Carregando...</p>
-      <div class="setupprogress hidden" id="progress"><i></i></div>
-      <div class="card setupopts" id="opts">
-        <div class="field">
-          <div class="grow"><span>Pasta</span><span class="hint mono setuppath" id="dir"></span></div>
-          <button class="btn dark chunk press" id="pick">Trocar</button>
+
+      <section class="sheet setup-opts" id="opts">
+        <div class="row setup-row">
+          <div class="grow"><span class="title">Pasta</span><span class="sub setup-path" id="dir"></span></div>
+          <button class="btn small" id="pick">Trocar</button>
         </div>
-        <div class="field">
-          <div class="grow"><span>Iniciar com o Windows</span><span class="hint">Abre escondido, só o ícone na bandeja</span></div>
+        <div class="row setup-row">
+          <div class="grow"><span class="title">Iniciar com o Windows</span><span class="sub">Abre escondido, só o ícone na bandeja</span></div>
           <button class="tog" id="startup" role="switch" aria-label="Iniciar com o Windows"></button>
         </div>
-        <div class="field">
-          <div class="grow"><span>Atalho na área de trabalho</span></div>
+        <div class="row setup-row">
+          <div class="grow"><span class="title">Atalho na área de trabalho</span></div>
           <button class="tog off" id="desktop" role="switch" aria-label="Atalho na área de trabalho"></button>
         </div>
-      </div>
-      <div class="setupactions">
-        <button class="btn yellow chunk-bright press" id="install">Instalar</button>
-        <button class="btn yellow chunk-bright press hidden" id="open">Abrir o Quack Presence</button>
+      </section>
+
+      <div class="setup-actions">
+        <button class="btn primary setup-main" id="install" disabled>Instalar</button>
+        <button class="btn primary setup-main hidden" id="open">Abrir o Quack Presence</button>
       </div>
     </main>
   </div>
