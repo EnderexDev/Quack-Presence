@@ -80,6 +80,9 @@ body.setupbody { background: var(--bg); }
   direction: rtl; text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Sem estas marcas (U+200E) o rtl leva a pontuação das pontas para o lado errado: o \\ de uma
+   pasta de rede aparecia no fim do caminho */
+.setup-path::before, .setup-path::after { content: "\200E"; }
 
 /* ---------- A ação: amarela, na largura do próprio texto ---------- */
 .setup-actions { flex: none; display: flex; justify-content: center; gap: 10px; min-height: 40px; }
