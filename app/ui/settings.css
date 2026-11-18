@@ -33,7 +33,6 @@
 .group { display: flex; flex-direction: column; gap: 8px; }
 .group > .label { padding-left: 4px; }
 .pad { padding: 14px; }
-.sheet:not(.pad) > * + * { border-top: 1px solid var(--line); }
 .note { margin: 0; padding: 0 4px; font-size: 12px; line-height: 1.45; color: var(--muted); }
 .sheet .note { padding: 0 2px; }
 /* No rodapé, ao lado do botão do config.json: duas linhas curtas, sem empurrar Cancelar e Salvar */

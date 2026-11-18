@@ -94,16 +94,25 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
   background: linear-gradient(var(--word-1), var(--word-2) 45%, var(--word-3));
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
-.brand .studio { font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* O "StarX Studio" em caixa alta: embaixo do nome na marca, ou numa linha sozinha (instalador) */
+.studio { font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.brand .studio { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Superfícies ---------- */
 /* Um grupo dentro do painel (o card de vidro do Quackify, sem o desfoque) */
 .sheet { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-md); }
+/* As linhas de um grupo se separam por um filete; um grupo que é uma linha só (.row) não tem */
+.sheet:not(.row) > * + * { border-top: 1px solid var(--line); }
 /* Uma linha: o texto à esquerda e o controle à direita */
 .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .row .title { font-weight: 600; font-size: 13px; color: var(--text); }
 .row .sub { display: block; font-size: 12px; color: var(--muted); }
 .row .sub.new { color: var(--text); font-weight: 600; }
+/* Um caminho longo perde o começo, não o fim (o fim é a pasta); o caminho inteiro vai no title.
+   Sem as marcas U+200E o rtl leva a pontuação das pontas para o lado errado: o \\ de uma pasta
+   de rede aparecia no fim do caminho */
+.path { direction: rtl; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.path::before, .path::after { content: "\200E"; }
 
 /* ---------- Bolinha de estado ---------- */
 /* Parada: o anel é uma sombra fixa, não um pulso (sem animação em loop, ver o topo) */
@@ -129,6 +138,8 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 /* A ação principal da tela, a única em amarelo (com a logo) */
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .btn.primary:not(:disabled):hover { background: var(--accent-2); }
+/* Desligada fica neutra: o amarelo apagado pela opacidade parecia sujo */
+.btn.primary:disabled { background: var(--surface-2); color: var(--muted); opacity: 1; }
 .btn svg, .icon-btn svg { width: 16px; height: 16px; flex: none; }
 /* Botão redondo só de ícone (round-btn do Quackify, topbar.css) */
 .icon-btn {
