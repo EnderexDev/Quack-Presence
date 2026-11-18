@@ -40,8 +40,9 @@ function render() {
     const active = view.config.modoAtivo;
     modes.append(
       h("span", { class: "label" }, "Modo do card"),
-      h("div", { class: "seg" }, names.map((name) =>
-        h("button", { class: name === active ? "on" : "", onclick: () => setMode(name) }, name))));
+      // Com quatro ou mais, a linha fica mais justa (tray.css); o title guarda o nome se um cortar
+      h("div", { class: names.length >= 5 ? "seg many crowded" : names.length === 4 ? "seg many" : "seg" }, names.map((name) =>
+        h("button", { class: name === active ? "on" : "", title: name, onclick: () => setMode(name) }, name))));
   }
   modes.classList.toggle("hidden", !names.length);
   renderUpdate();
