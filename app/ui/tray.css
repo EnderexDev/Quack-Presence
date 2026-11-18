@@ -1,0 +1,32 @@
+/*
+  O painel da bandeja (tray.html), por cima de base.css. A janela é transparente e tem a altura do
+  painel (tray.js mede e o Rust ajusta), então o painel é a única coisa desenhada nela.
+*/
+body.traybody { background: transparent; }
+
+.tray {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 12px 10px;
+  background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-lg);
+}
+
+.tray .brand { padding: 0 4px 2px; }
+
+/* O agora: o estado com o interruptor, o card como o Discord mostra e o modo */
+.now { display: flex; flex-direction: column; }
+.now > * { padding: 0 12px; }
+.status { height: 44px; font-weight: 600; font-size: 13px; }
+.status #estado { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#card { padding: 12px; border-top: 1px solid var(--line); }
+/* O erro no lugar do card: alinhado com o texto do estado, logo abaixo dele */
+#card:has(> .note) { padding: 0 12px 12px 30px; border-top: 0; margin-top: -6px; }
+#card .note { margin: 0; font-size: 12.5px; color: var(--muted); }
+#modes { padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+#modes .label { display: block; margin: 0 0 8px 2px; }
+
+.upd { padding: 10px 12px; min-height: 52px; }
+.upd .grow { display: flex; flex-direction: column; gap: 1px; }
+
+/* Configurações à esquerda; reconectar, os dois arquivos e sair à direita */
+.actions { display: flex; align-items: center; gap: 2px; padding: 2px 0 0; }
+.actions .sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line); }

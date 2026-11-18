@@ -12,15 +12,18 @@ function render() {
   document.getElementById("estado").textContent = view.estado || "Carregando...";
   const ativo = document.getElementById("ativo");
   const ligado = view.config?.ativo !== false;
-  ativo.className = ligado ? "tog" : "tog off";
+  ativo.classList.toggle("off", !ligado);
   ativo.setAttribute("aria-checked", String(ligado));
   ativo.classList.toggle("hidden", !view.configOk);
 
   const card = document.getElementById("card");
   card.replaceChildren();
-  if (view.linha1 || view.linha2) {
+  if ((view.linha1 || view.linha2) && view.nivel !== "ok") {
+    // Fora do ok as linhas são o erro do presence.mjs (status_view), não um card: texto simples
+    card.append(h("p", { class: "note" }, [view.linha1, view.linha2].filter(Boolean).join(" · ")));
+  } else if (view.linha1 || view.linha2) {
     card.append(
-      h("div", { class: "presence chunk" },
+      h("div", { class: "presence" },
         h("img", { src: "capivara.png", alt: "" }),
         h("div", { class: "lines" },
           view.tipo && h("span", { class: "kind" }, view.tipo),
@@ -36,8 +39,8 @@ function render() {
   if (names.length) {
     const active = view.config.modoAtivo;
     modes.append(
-      h("span", { class: "label", style: "display:block;margin:0 0 6px 2px" }, "Modo do card"),
-      h("div", { class: "seg full" }, names.map((name) =>
+      h("span", { class: "label" }, "Modo do card"),
+      h("div", { class: "seg" }, names.map((name) =>
         h("button", { class: name === active ? "on" : "", onclick: () => setMode(name) }, name))));
   }
   modes.classList.toggle("hidden", !names.length);
@@ -48,7 +51,7 @@ function render() {
 function renderUpdate() {
   const sozinho = view.config?.atualizarSozinho !== false;
   const auto = document.getElementById("updauto");
-  auto.className = sozinho ? "tog" : "tog off";
+  auto.classList.toggle("off", !sozinho);
   auto.setAttribute("aria-checked", String(sozinho));
   auto.classList.toggle("hidden", !view.instalado || !view.configOk);
   const ver = document.getElementById("updver");
@@ -108,12 +111,13 @@ async function setMode(name) {
 }
 
 /**
- * A janela tem a altura do painel; o Rust mantém a borda de baixo colada na barra de tarefas.
+ * A janela tem a altura do painel, sem margem em volta (tray.css); o Rust põe a borda de baixo
+ * a TRAY_GAP da barra de tarefas.
  * Medido a cada mudança de tamanho, porque as fontes chegam depois do primeiro desenho.
  */
 const panel = document.getElementById("tray");
 function fit() {
-  invoke("tray_fit", { height: Math.ceil(panel.getBoundingClientRect().height) + 9 });
+  invoke("tray_fit", { height: Math.ceil(panel.getBoundingClientRect().height) });
 }
 new ResizeObserver(fit).observe(panel);
 

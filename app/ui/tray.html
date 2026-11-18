@@ -3,35 +3,54 @@
 <head>
 <meta charset="utf-8">
 <title>Quack Presence</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="tray.css">
 <script type="module" src="tray.js"></script>
 </head>
 <body class="traybody">
-  <div class="tray chunk" id="tray">
-    <div class="trayhead brand">
-      <span class="mark"></span>
-      <div class="who"><span class="word">Quack Presence</span><span id="app"></span></div>
-    </div>
-    <div class="state chunk"><span class="dot" id="dot"></span><span class="grow" id="estado">Carregando...</span><button class="tog" id="ativo" role="switch" title="Ligar ou desligar o card no Discord"></button></div>
-    <div id="card"></div>
-    <div id="modes"></div>
-    <div class="state chunk upd" id="upd">
-      <div class="grow"><span id="updtxt">Atualizar sozinho</span><span class="sub" id="updver"></span></div>
-      <button class="btn yellow chunk-bright press hidden" id="updnow">Atualizar</button>
-      <button class="btn dark chunk press hidden" id="updcheck" title="Procurar agora uma versão nova no GitHub">Verificar</button>
+  <div class="tray" id="tray">
+    <header class="brand">
+      <span class="logo"></span>
+      <div class="names"><span class="wordmark">Quack Presence</span><span class="studio" id="app"></span></div>
+    </header>
+
+    <section class="sheet now">
+      <div class="row status">
+        <span class="dot" id="dot"></span>
+        <span class="grow" id="estado">Carregando...</span>
+        <button class="tog main" id="ativo" role="switch" aria-label="Card no Discord" title="Ligar ou desligar o card no Discord"></button>
+      </div>
+      <div id="card"></div>
+      <div id="modes"></div>
+    </section>
+
+    <section class="sheet row upd" id="upd">
+      <div class="grow"><span class="title" id="updtxt">Atualizar sozinho</span><span class="sub" id="updver"></span></div>
+      <button class="btn small strong hidden" id="updnow">Atualizar</button>
+      <button class="btn small hidden" id="updcheck" title="Procurar agora uma versão nova no GitHub">Verificar</button>
       <button class="tog" id="updauto" role="switch" aria-label="Atualizar sozinho" title="Instalar sozinho as versões novas do GitHub"></button>
-    </div>
-    <div class="trayfoot">
-      <div class="row">
-        <button class="btn yellow chunk-bright press" id="settings">Configurações</button>
-        <button class="btn dark chunk press" id="quit">Sair</button>
-      </div>
-      <div class="row">
-        <button class="btn dark chunk press" id="reconnect">Reconectar</button>
-        <button class="btn dark chunk press file" id="config">config.json</button>
-        <button class="btn dark chunk press file" id="log">log</button>
-      </div>
-    </div>
+    </section>
+
+    <footer class="actions">
+      <button class="btn" id="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+        Configurações
+      </button>
+      <span class="grow"></span>
+      <button class="icon-btn" id="reconnect" title="Reconectar ao Discord" aria-label="Reconectar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+      </button>
+      <button class="icon-btn" id="config" title="Abrir o config.json" aria-label="Abrir o config.json">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4H7a2 2 0 0 0-2 2v3.5A2.5 2.5 0 0 1 2.5 12 2.5 2.5 0 0 1 5 14.5V18a2 2 0 0 0 2 2h1"/><path d="M16 4h1a2 2 0 0 1 2 2v3.5a2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0-2.5 2.5V18a2 2 0 0 1-2 2h-1"/></svg>
+      </button>
+      <button class="icon-btn" id="log" title="Abrir o log" aria-label="Abrir o log">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+      </button>
+      <span class="sep"></span>
+      <button class="icon-btn danger" id="quit" title="Sair do Quack Presence (o card some do Discord)" aria-label="Sair">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg>
+      </button>
+    </footer>
   </div>
 </body>
 </html>

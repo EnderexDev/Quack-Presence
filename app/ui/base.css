@@ -1,0 +1,183 @@
+/*
+  Base do visual novo do Quack Presence: os tokens e os componentes que o painel da bandeja, as
+  configurações e o instalador dividem. Os tokens vêm do Quackify (src/styles/tokens.css, lidos
+  pelo git em 18/11/26), os mesmos do Wyll e do Quack Time; só o tema escuro, como nesses dois.
+  O style.css antigo continua servindo settings.html e setup.html até eles passarem para cá.
+
+  O WebView2 deste app roda sem GPU (tauri.conf.json): nada de backdrop-filter nem animação em
+  loop aqui. O vidro do Quackify vira cores sólidas já compostas sobre o fundo, e o movimento são
+  transições que terminam.
+*/
+/* A letra da logo (Fredoka Bold, OFL, fonts/Fredoka-OFL.txt): só o nome do app, como marca */
+@font-face { font-family: "Fredoka"; src: url("fonts/Fredoka.ttf") format("truetype"); font-weight: 300 700; font-stretch: 75% 125%; }
+
+:root {
+  color-scheme: dark;
+
+  /* Cores (Quackify tokens.css) */
+  --bg: #0a0a0c;
+  --surface-2: rgba(255, 255, 255, 0.08);
+  --surface-3: rgba(255, 255, 255, 0.14);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #f6f4ee;
+  --muted: #9a978f;
+  --accent: #ffd84d;
+  --accent-2: #ffb800;
+  --on-accent: #1a1400;
+  --green: #29d39a;
+  --danger: #ff6b6b;
+  /* Do Quack Time (panel/index.html): a superfície mais leve e o texto terciário */
+  --surface-1: rgba(255, 255, 255, 0.04);
+  --faint: #6b6861;
+  /* O vidro do Quackify (--glass-strong, rgba(20,20,26,.86)) composto sobre --bg: a janela do
+     painel é transparente e sem desfoque, então a superfície precisa ser opaca */
+  --panel: #131318;
+  --panel-line: #24242a;
+
+  /* O degradê do nome, de cima pra baixo (Figma "Quack - Logo", lockup "quack-lockup-ouro") */
+  --word-1: #fff6c8;
+  --word-2: #ffcc1f;
+  --word-3: #b87400;
+
+  /* Forma (Quackify tokens.css) */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-pill: 999px;
+  --gap: 8px;
+  --shadow-popup: 0 20px 50px rgba(0, 0, 0, 0.5);
+
+  /* Movimento (Quackify tokens.css) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --t-fast: 150ms;
+  --t-mid: 300ms;
+
+  /* Tipo (Quackify base.css) */
+  --font: "Segoe UI Variable Text", "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  --logo: "Fredoka", "Arial Rounded MT Bold", sans-serif;
+
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; }
+button:disabled { cursor: default; opacity: 0.4; }
+:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+::selection { background: var(--surface-3); }
+::-webkit-scrollbar { width: 12px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border: 3px solid transparent; background-clip: padding-box; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, 0.3); }
+
+.hidden { display: none !important; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); }
+/* Rótulo de seção (spec do Quackify: 11 em maiúsculas espaçadas) */
+.label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+/* Janela sem foco ou minimizada (common.js liga a classe): nenhuma animação gasta quadro */
+body.paused *, body.paused *::before, body.paused *::after { animation-play-state: paused !important; }
+
+/* ---------- Marca: logo, nome em Fredoka dourado, StarX Studio embaixo ---------- */
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand .logo { width: 40px; height: 40px; flex: none; background: url(logo.svg) center / contain no-repeat; }
+.brand .names { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wordmark {
+  font-family: var(--logo); font-weight: 700; font-size: 21px; line-height: 1; white-space: nowrap;
+  background: linear-gradient(var(--word-1), var(--word-2) 45%, var(--word-3));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.brand .studio { font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Superfícies ---------- */
+/* Um grupo dentro do painel (o card de vidro do Quackify, sem o desfoque) */
+.sheet { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-md); }
+/* Uma linha: o texto à esquerda e o controle à direita */
+.row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.row .title { font-weight: 600; font-size: 13px; color: var(--text); }
+.row .sub { display: block; font-size: 12px; color: var(--muted); }
+.row .sub.new { color: var(--text); font-weight: 600; }
+
+/* ---------- Bolinha de estado ---------- */
+/* Parada: o anel é uma sombra fixa, não um pulso (sem animação em loop, ver o topo) */
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--faint); }
+.dot.live { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent); }
+.dot.warn { background: #f2c46d; }
+.dot.bad { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent); }
+
+/* ---------- Botões (pill-btn do Quackify, song.css) ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: none;
+  height: 32px; padding: 0 14px; border-radius: var(--r-pill);
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+}
+.btn:not(:disabled):hover { background: var(--surface-3); }
+.btn:not(:disabled):active { transform: scale(0.97); }
+.btn.small { height: 28px; padding: 0 12px; font-size: 12.5px; }
+/* A ação forte sem amarelo: branco, como o interruptor ligado do Quackify */
+.btn.strong { background: var(--text); color: var(--bg); border-color: transparent; }
+.btn.strong:not(:disabled):hover { background: #ffffff; }
+/* A ação principal da tela, a única em amarelo (com a logo) */
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.btn.primary:not(:disabled):hover { background: var(--accent-2); }
+.btn svg, .icon-btn svg { width: 16px; height: 16px; flex: none; }
+/* Botão redondo só de ícone (round-btn do Quackify, topbar.css) */
+.icon-btn {
+  display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 50%;
+  color: var(--muted); transition: color var(--t-fast), background var(--t-fast);
+}
+.icon-btn:not(:disabled):hover { color: var(--text); background: var(--surface-2); }
+.icon-btn.danger:not(:disabled):hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* ---------- Interruptor (toggle do Quackify, views/settings.css) ---------- */
+/* Ligado é branco; .main é o estado principal da tela, em amarelo. .off desliga. */
+.tog { position: relative; flex: none; width: 42px; height: 24px; border-radius: 12px; background: var(--text); transition: background var(--t-fast); }
+.tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg); transform: translateX(18px); transition: transform var(--t-fast) var(--ease-out), background var(--t-fast); }
+.tog.main { background: var(--accent); }
+.tog.main::after { background: var(--on-accent); }
+.tog.off { background: var(--surface-3); }
+.tog.off::after { transform: none; background: #ffffff; }
+
+/* ---------- Segmentado (segmented do Quackify, topbar.css, sem a pílula deslizante) ---------- */
+/* Os nomes nunca são cortados: com modos demais para uma linha, eles quebram em outra, e o raio
+   de 18 (metade da altura de uma linha) vira pílula numa linha e retângulo arredondado em duas */
+.seg { display: flex; flex-wrap: wrap; padding: 3px; gap: 2px; border-radius: 18px; background: var(--surface-1); border: 1px solid var(--line); }
+.seg button {
+  flex: 1 1 0; min-width: max-content; height: 28px; padding: 0 10px; border-radius: 14px;
+  font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: capitalize; white-space: nowrap;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--surface-3); color: var(--text); }
+
+/* ---------- O card do Discord, desenhado como o perfil mostra ---------- */
+.presence { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.presence img { width: 60px; height: 60px; flex: none; border-radius: var(--r-sm); object-fit: cover; background: var(--bg); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+.presence .lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.presence .kind { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.presence b { font-size: 13.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.presence .ln { font-size: 12.5px; color: #c9c6be; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Aviso curto (toast do Quackify, states.css) ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 10;
+  width: max-content; max-width: calc(100vw - 32px); padding: 8px 14px; border-radius: var(--r-md);
+  background: #1e1e25; border: 1px solid var(--surface-3); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12.5px; font-weight: 600; color: var(--text); text-align: center;
+  animation: toast-in var(--t-mid) var(--ease-out);
+}
+.toast.bad { color: #ffb3b0; border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+  .tog, .tog::after, .btn, .seg button { transition: none; }
+}
