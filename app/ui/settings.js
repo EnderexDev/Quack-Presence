@@ -137,16 +137,17 @@ function group(label, ...children) {
   return h("section", { class: "group" }, label && h("span", { class: "label" }, label), ...children);
 }
 
-/** Um número preso ao intervalo; quando o valor digitado é corrigido, a linha diz para quanto */
+/** Um número preso ao intervalo; um valor fora dele é trazido para dentro e a linha diz para quanto */
 function number(key, min, max, hint) {
   return h("input", {
     class: "num", type: "number", min, max, value: draft[key], "aria-label": key,
     onchange: (event) => {
-      const typed = event.target.value;
-      draft[key] = num(typed, draft[key], min, max);
+      const typed = event.target.value === "" ? NaN : Number(event.target.value);
+      draft[key] = num(event.target.value, draft[key], min, max);
       event.target.value = draft[key];
       const sub = event.target.closest(".field")?.querySelector(".sub");
-      const fixed = String(draft[key]) !== typed.trim();
+      // Só fora do intervalo: arredondar ou voltar um campo vazio ao anterior não precisa de aviso
+      const fixed = Number.isFinite(typed) && (typed < min || typed > max);
       if (sub) {
         sub.textContent = fixed ? `Ajustado para ${draft[key]}: vai de ${min} a ${max}` : hint ?? "";
         sub.classList.toggle("fix", fixed);
