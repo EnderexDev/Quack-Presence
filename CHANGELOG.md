@@ -7,6 +7,17 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+### Changed
+- New look for everything Quack Presence draws: the tray panel, the settings window and the installer. Darker and calmer, with yellow only on the logo and on the main action of each screen.
+- The settings window is now three tabs (Card, Comportamento, Projetos) instead of one long scroll, and the activity type is a row of buttons next to the card preview.
+- In the tray panel, Reconectar, config.json, log and Sair are icon buttons with a tooltip, and the card modes always fit on one line.
+- Salvar in the settings window now writes only what you changed in it, so a mode you switched from the tray while the window was open is no longer put back.
+- The number fields in the settings window say when a value was out of range and what it was adjusted to.
+- The installer shows a green check on the logo when it finishes, and Instalar stays off until the folder is read.
+
+### Fixed
+- A project named `__proto__` no longer breaks saving its settings.
+
 ## [1.1.6] - 2026-11-12
 
 ### Added
