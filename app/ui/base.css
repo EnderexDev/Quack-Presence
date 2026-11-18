@@ -2,7 +2,7 @@
   Base do visual novo do Quack Presence: os tokens e os componentes que o painel da bandeja, as
   configurações e o instalador dividem. Os tokens vêm do Quackify (src/styles/tokens.css, lidos
   pelo git em 18/11/26), os mesmos do Wyll e do Quack Time; só o tema escuro, como nesses dois.
-  O style.css antigo continua servindo settings.html e setup.html até eles passarem para cá.
+  Cada tela soma o seu arquivo por cima: tray.css, settings.css e setup.css.
 
   O WebView2 deste app roda sem GPU (tauri.conf.json): nada de backdrop-filter nem animação em
   loop aqui. O vidro do Quackify vira cores sólidas já compostas sobre o fundo, e o movimento são
