@@ -17,13 +17,13 @@
         "title": "Quack Presence",
         "url": "settings.html",
         "width": 480,
-        "height": 700,
+        "height": 760,
         "resizable": false,
         "maximizable": false,
         "visible": false,
         "center": true,
         "theme": "Dark",
-        "backgroundColor": "#0d0b08"
+        "backgroundColor": "#0a0a0c"
       },
       {
         "label": "tray",
