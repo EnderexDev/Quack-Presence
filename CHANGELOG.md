@@ -16,6 +16,7 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 - The installer shows a green check on the logo when it finishes, and Instalar stays off until the folder is read.
 
 ### Fixed
+- The card modes show in the order they have in config.json, in the panel and in the settings window. They were sorted alphabetically.
 - A project named `__proto__` no longer breaks saving its settings.
 
 ## [1.1.6] - 2026-11-12
