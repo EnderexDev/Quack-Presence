@@ -7,6 +7,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-19
+
 ### Changed
 - New look for everything Quack Presence draws: the tray panel, the settings window and the installer. Darker and calmer, with yellow only on the logo and on the main action of each screen.
 - The settings window is now three tabs (Card, Comportamento, Projetos) instead of one long scroll, and the activity type is a row of buttons next to the card preview.
@@ -60,7 +62,8 @@ line under [Unreleased], and `npm run release` turns that section into the versi
 ### Added
 - Its own installer and automatic updates from GitHub, with an Update button in the tray panel.
 
-[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.6...HEAD
+[Unreleased]: https://github.com/EnderexDev/Quack-Presence/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.6...v1.2.0
 [1.1.6]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/EnderexDev/Quack-Presence/compare/v1.1.3...v1.1.4
